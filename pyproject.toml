@@ -1,47 +1,85 @@
 [tool.poetry]
-name = "template-python-library"
-version = "0.1.0"
-description = "A template repository to help with developing Python libraries."
-authors = ["Hassan Abedi <hassan.abedi.t@gmail.com>"]
-maintainers = ["Hassan Abedi <hassan.abedi.t@gmail.com>"]
+name = "cogitator"
+version = "0.1.0a1"
+description = "A Python toolkit for chain-of-thought prompting"
+authors = ["Hassan Abedi <hassan.abedi.t+cogitator@gmail.com>"]
 license = "MIT"
 readme = "README.md"
-include = ["README.md", "LICENSE"]
-packages = [{ include = "src", from = "." }]
-repository = "https://github.com/habedi/template-python-library"
-documentation = "https://github.com/habedi/template-python-library/blob/main/docs/index.md"
+packages = [{ include = "cogitator" }]
+repository = "https://github.com/habedi/cogitator"
+documentation = "https://github.com/habedi/cogitator/blob/main/docs/README.md"
 classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-keywords = ["template", "python", "library"]
+keywords = ["prompt engineering", "chain-of-thought", "artificial intelligence", "machine learning"]
 
 [tool.poetry.dependencies]
 python = "^3.10"
+scikit-learn = "^1.6.1"
+openai = "^1.76.2"
+ollama = "^0.4.8"
+sentence-transformers = "^4.1.0"
 
-[tool.poetry.group.dev.dependencies] # Development dependencies (need `--with=dev` flag)
+[tool.poetry.group.dev.dependencies]
 pytest = "^8.0.1"
 pytest-cov = "^6.0.0"
 pytest-mock = "^3.14.0"
-pytest-benchmark = "^5.1.0"
+pytest-asyncio = "^0.26.0"
 mypy = "^1.11.1"
-ruff = "^0.9.3"
+ruff = "^0.11.7"
+griffe = "^1.7.3"
+polars = "^1.28.1"
+datasets = "^3.5.1"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
-pythonpath = [".", "package"]
+pythonpath = ["cogitator"]
+testpaths   = ["tests"]
+addopts = [
+    "--tb=short",
+    "--disable-warnings",
+    "--cov=cogitator",
+    "--cov-branch",
+    "--cov-report=term",
+    "--cov-report=xml",
+]
+
+[tool.coverage.run]
+branch = true
+parallel = true
+source = ["cogitator"]
+omit = [
+    "tests/*",
+    "benches/*",
+    "examples/*",
+]
+
+[tool.coverage.report]
+show_missing = false
+skip_empty = true
+precision = 2
 
 [tool.mypy]
 python_version = "3.10"
 ignore_missing_imports = true
+disallow_untyped_defs = true
 disallow_untyped_calls = true
 strict_optional = true
 warn_redundant_casts = true
+exclude = "^(benches/|examples/|tests/)"
 
-# Ruff configuration (Edit as needed)
 [tool.ruff]
 exclude = [
     ".bzr",
@@ -67,14 +105,15 @@ exclude = [
     "venv",
     # Additional directories to exclude
     "tests",
+    "benches",
 ]
 line-length = 100
 indent-width = 4
-src = ["src"]
+src = ["cogitator", "examples"]
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["ANN", "D", "E", "F", "I"]
+select = ["ANN", "E", "F", "I"]
 ignore = [
     # Ignore docstring errors
     "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",

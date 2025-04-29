@@ -1,8 +1,11 @@
-name: Tests
+name: Run Tests
 
 on:
-  workflow_dispatch: # Only enable manual runs for now
-  workflow_call: # Make this workflow available to be called by other workflows
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -10,7 +13,6 @@ jobs:
 
     strategy:
       matrix:
-        # Define the Python versions to test against
         python-version: [ "3.10", "3.11", "3.12", "3.13" ]
 
     steps:
@@ -29,12 +31,9 @@ jobs:
 
       - name: Run Tests with Coverage
         run: |
-          # make coverage
-          make codecov
-        continue-on-error: false
+          make test
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-        continue-on-error: true

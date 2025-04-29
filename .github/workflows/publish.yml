@@ -1,18 +1,19 @@
 name: Publish to PyPI
 
 on:
-  workflow_dispatch: # Enable manual runs
+  workflow_dispatch:
   push:
     tags:
-      - 'v*' # Trigger on version tags
+      - 'v*'
+
+permissions:
+  contents: read
 
 jobs:
 
-  # Run tests before publishing
   call_tests:
     uses: ./.github/workflows/tests.yml
 
-  # Try to publish if only tests pass
   publish_to_pypi:
     runs-on: ubuntu-latest
     needs: call_tests
@@ -26,14 +27,11 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Install Poetry
+      - name: Install Dependencies
         run: |
           make setup
-
-      - name: Install Python Dependencies
-        run: |
           make install
 
-      - name: Build and Publish Package
+      - name: Build and Publish to PyPI
         run: |
-          PYPI_TOKEN=${{ secrets.PYPI_API_TOKEN }} make publish # Need `PYPI_API_TOKEN` secret
+          PYPI_TOKEN=${{ secrets.PYPI_API_TOKEN }} make publish

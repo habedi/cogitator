@@ -1,11 +1,14 @@
-name: Run Linting
+name: Run Linters
 
 on:
-  workflow_dispatch: # Only enable manual runs for now
-  workflow_call: # Make this workflow available to be called by other workflows
+  workflow_dispatch:
+  workflow_call:
   push:
     tags:
-      - 'v*' # Trigger on version tags
+      - 'v*'
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -13,7 +16,6 @@ jobs:
 
     strategy:
       matrix:
-        # Define the Python versions check against
         python-version: [ "3.10", "3.11", "3.12", "3.13" ]
 
     steps:
@@ -33,4 +35,3 @@ jobs:
       - name: Run Tests with Coverage
         run: |
           make lint
-        continue-on-error: false
