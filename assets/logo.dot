@@ -1,0 +1,10 @@
+digraph G {
+    // Set the overall style and size of the logo
+    graph [size = "4,4", ratio = 1, bgcolor = "white"];
+
+// Define the node style for the shapes in the logo
+    node [style = filled, fontcolor = black, shape = box];
+
+// Logo element as a square box with a nicer color
+    logo_title [label = "Logo" shape = box fontcolor = black style = filled color = "#a8e6cf" width = 2.0 height = 2.0 fixedsize = true];
+}

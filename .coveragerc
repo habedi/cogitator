@@ -1,0 +1,16 @@
+[run]
+# Exclude test files and specific init files from the coverage report
+omit =
+    */tests/*
+    */test_*.py
+    */__init__.py  # Good idea to exclude __init__.py files from the coverage report
+
+# Include source files only from certain directories
+source =
+    src/
+
+# Set parallel to true if you run tests in parallel
+parallel = True
+
+# Enable branch coverage if set to True
+branch = False

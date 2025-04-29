@@ -1,0 +1,96 @@
+[tool.poetry]
+name = "template-python-library"
+version = "0.1.0"
+description = "A template repository to help with developing Python libraries."
+authors = ["Hassan Abedi <hassan.abedi.t@gmail.com>"]
+maintainers = ["Hassan Abedi <hassan.abedi.t@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+include = ["README.md", "LICENSE"]
+packages = [{ include = "src", from = "." }]
+repository = "https://github.com/habedi/template-python-library"
+documentation = "https://github.com/habedi/template-python-library/blob/main/docs/index.md"
+classifiers = [
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+keywords = ["template", "python", "library"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+
+[tool.poetry.group.dev.dependencies] # Development dependencies (need `--with=dev` flag)
+pytest = "^8.0.1"
+pytest-cov = "^6.0.0"
+pytest-mock = "^3.14.0"
+pytest-benchmark = "^5.1.0"
+mypy = "^1.11.1"
+ruff = "^0.9.3"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+pythonpath = [".", "package"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+disallow_untyped_calls = true
+strict_optional = true
+warn_redundant_casts = true
+
+# Ruff configuration (Edit as needed)
+[tool.ruff]
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    # Additional directories to exclude
+    "tests",
+]
+line-length = 100
+indent-width = 4
+src = ["src"]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["ANN", "D", "E", "F", "I"]
+ignore = [
+    # Ignore docstring errors
+    "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",
+]
+fixable = ["ALL"]
+unfixable = []
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = []
