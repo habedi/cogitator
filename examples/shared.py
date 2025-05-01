@@ -5,11 +5,12 @@ import os
 from typing import Any, Callable, Coroutine
 
 from cogitator.model import BaseLLM, OllamaLLM, OpenAILLM
+from cogitator.schemas import ExtractedAnswer
 
 
 def setup_logging():
     logging.basicConfig(
-        level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("sentence_transformers.SentenceTransformer").setLevel(logging.WARNING)
@@ -26,11 +27,12 @@ def get_llm(provider: str, openai_key: str, ollama_model: str) -> BaseLLM:
             raise ValueError(
                 "OpenAI API key must be provided via --openai-key or OPENAI_API_KEY environment variable."
             )
-        return OpenAILLM(api_key=key, model="gpt-4.1-nano")
+        base = OpenAILLM(api_key=key, model="gpt-4.1-nano")
     elif provider == "ollama":
-        return OllamaLLM(model=ollama_model)
+        base = OllamaLLM(model=ollama_model)
     else:
         raise ValueError(f"Unsupported provider: {provider}")
+    return JSONOnlyLLM(base)
 
 
 def parse_common_args(description: str) -> argparse.Namespace:
@@ -67,3 +69,37 @@ def run_main(
         asyncio.run(main_async_func(args))
     else:
         main_sync_func(args)
+
+
+class JSONOnlyLLM:
+    def __init__(self, real_llm):
+        self._real = real_llm
+
+    def generate(self, prompt: str, **kwargs) -> str:
+        json_prompt = (
+            prompt
+            + '\n\nReturn exactly one JSON object with a single key "final_answer" whose value is the answer string.\n\nJSON Answer:'
+        )
+        kwargs.pop("temperature", None)
+        parsed = self._real.generate_json(json_prompt, response_model=ExtractedAnswer, **kwargs)
+        return parsed.final_answer
+
+    async def generate_async(self, prompt: str, **kwargs) -> str:
+        json_prompt = (
+            prompt
+            + '\n\nReturn exactly one JSON object with a single key "final_answer" whose value is the answer string.\n\nJSON Answer:'
+        )
+        kwargs.pop("temperature", None)
+        parsed = await self._real.generate_json_async(
+            json_prompt, response_model=ExtractedAnswer, **kwargs
+        )
+        return parsed.final_answer
+
+    def generate_json(self, prompt: str, response_model: Any, **kwargs) -> Any:
+        return self._real.generate_json(prompt, response_model=response_model, **kwargs)
+
+    async def generate_json_async(self, prompt: str, response_model: Any, **kwargs) -> Any:
+        return await self._real.generate_json_async(prompt, response_model=response_model, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._real, name)

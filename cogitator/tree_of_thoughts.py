@@ -4,20 +4,12 @@ import math
 from typing import List, Optional
 
 from .model import BaseLLM
+from .schemas import EvaluationResult, ThoughtExpansion
 
 logger = logging.getLogger(__name__)
 
 
 class TreeOfThoughts:
-    """
-    Monte Carlo Tree Search over chains of thought. At each simulation:
-      1) Selection via UCB1 down to a leaf.
-      2) Expansion by generating k new thoughts (children).
-      3) Evaluation of one new child (or the leaf if no children).
-      4) Backpropagation of the value up from the evaluated node.
-    After all simulations, follow the most‐visited path and generate a final answer.
-    """
-
     class _Node:
         __slots__ = ("steps", "parent", "children", "visits", "value_sum", "prior")
 
@@ -77,16 +69,19 @@ class TreeOfThoughts:
         while not node.is_leaf():
             total_visits = sum(child.visits for child in node.children)
             if total_visits == 0:
-                break
+                if not node.children:
+                    break
+                else:
+                    node = node.children[0]
+                    continue
+
             sqrt_total = math.sqrt(total_visits)
 
             ucb_scores = [
                 child.value() + self.c_puct * child.prior * (sqrt_total / (1 + child.visits))
                 for child in node.children
             ]
-            if (
-                not ucb_scores
-            ):  # Should not happen if node is not leaf and total_visits > 0, but safety check
+            if not ucb_scores:
                 break
             best_idx = ucb_scores.index(max(ucb_scores))
             node = node.children[best_idx]
@@ -95,20 +90,21 @@ class TreeOfThoughts:
     def _expand(self, node: _Node, question: str) -> None:
         ctx = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(node.steps))
         prompt = self.expand_prompt.format(k=self.num_branches, ctx=ctx, question=question)
+        generated = None
         try:
-            generated = self.llm.generate_json(prompt)
-            if not isinstance(generated, list):
-                logger.warning("Expansion did not return list: %s", generated)
+            generated = self.llm.generate_json(prompt, response_model=ThoughtExpansion)
+            # Check type based on Pydantic validation
+            if not isinstance(generated, ThoughtExpansion):
+                logger.warning("Expansion did not return ThoughtExpansion: %s", type(generated))
                 return
+            expansion_list = generated.thoughts
         except Exception as e:
             logger.error("Expansion JSON failed: %s", e, exc_info=True)
             return
 
-        thoughts = [
-            str(t).strip() for t in generated if isinstance(t, (str, int, float)) and str(t).strip()
-        ]
+        thoughts = [str(t).strip() for t in expansion_list if str(t).strip()]
         if not thoughts:
-            logger.debug("No valid thoughts extracted from expansion: %s", generated)
+            logger.debug("No valid thoughts extracted from expansion: %s", expansion_list)
             return
         prior = 1.0 / len(thoughts) if thoughts else 1.0
         for thought in thoughts[: self.num_branches]:
@@ -120,24 +116,31 @@ class TreeOfThoughts:
     ) -> None:
         ctx = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(node.steps))
         prompt = self.expand_prompt.format(k=self.num_branches, ctx=ctx, question=question)
+        generated = None
         try:
             if semaphore:
                 async with semaphore:
-                    generated = await self.llm.generate_json_async(prompt)
+                    generated = await self.llm.generate_json_async(
+                        prompt, response_model=ThoughtExpansion
+                    )
             else:
-                generated = await self.llm.generate_json_async(prompt)
-            if not isinstance(generated, list):
-                logger.warning("Async expansion did not return list: %s", generated)
+                generated = await self.llm.generate_json_async(
+                    prompt, response_model=ThoughtExpansion
+                )
+
+            if not isinstance(generated, ThoughtExpansion):
+                logger.warning(
+                    "Async expansion did not return ThoughtExpansion: %s", type(generated)
+                )
                 return
+            expansion_list = generated.thoughts
         except Exception as e:
             logger.error("Async expansion JSON failed: %s", e, exc_info=True)
             return
 
-        thoughts = [
-            str(t).strip() for t in generated if isinstance(t, (str, int, float)) and str(t).strip()
-        ]
+        thoughts = [str(t).strip() for t in expansion_list if str(t).strip()]
         if not thoughts:
-            logger.debug("No valid thoughts extracted from async expansion: %s", generated)
+            logger.debug("No valid thoughts extracted from async expansion: %s", expansion_list)
             return
         prior = 1.0 / len(thoughts) if thoughts else 1.0
         for thought in thoughts[: self.num_branches]:
@@ -147,16 +150,17 @@ class TreeOfThoughts:
     def _evaluate(self, node: _Node, question: str) -> float:
         steps_str = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(node.steps))
         prompt = self.eval_prompt.format(question=question, steps=steps_str)
+        result = None
         try:
-            result = self.llm.generate_json(prompt)
-            if isinstance(result, dict) and "score" in result:
-                raw = float(result["score"])
-
+            result = self.llm.generate_json(prompt, response_model=EvaluationResult)
+            if isinstance(result, EvaluationResult):
+                raw = float(result.score)
                 return max(0.0, min(1.0, (raw - 1.0) / 9.0))
-            logger.warning("Eval did not return expected JSON format: %s", result)
+            logger.warning("Eval did not return expected EvaluationResult type: %s", type(result))
         except (ValueError, TypeError) as e:
+            result_str = repr(result) if result is not None else "[result unavailable]"
             logger.error(
-                "Error converting evaluation score to float: %s. Result was: %s", e, result
+                "Error converting evaluation score to float: %s. Result was: %s", e, result_str
             )
         except Exception as e:
             logger.error("Eval JSON generation/parsing failed: %s", e, exc_info=True)
@@ -167,19 +171,28 @@ class TreeOfThoughts:
     ) -> float:
         steps_str = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(node.steps))
         prompt = self.eval_prompt.format(question=question, steps=steps_str)
+        result = None
         try:
             if semaphore:
                 async with semaphore:
-                    result = await self.llm.generate_json_async(prompt)
+                    result = await self.llm.generate_json_async(
+                        prompt, response_model=EvaluationResult
+                    )
             else:
-                result = await self.llm.generate_json_async(prompt)
-            if isinstance(result, dict) and "score" in result:
-                raw = float(result["score"])
+                result = await self.llm.generate_json_async(prompt, response_model=EvaluationResult)
+
+            if isinstance(result, EvaluationResult):
+                raw = float(result.score)
                 return max(0.0, min(1.0, (raw - 1.0) / 9.0))
-            logger.warning("Async eval did not return expected JSON format: %s", result)
+            logger.warning(
+                "Async eval did not return expected EvaluationResult type: %s", type(result)
+            )
         except (ValueError, TypeError) as e:
+            result_str = repr(result) if result is not None else "[result unavailable]"
             logger.error(
-                "Error converting async evaluation score to float: %s. Result was: %s", e, result
+                "Error converting async evaluation score to float: %s. Result was: %s",
+                e,
+                result_str,
             )
         except Exception as e:
             logger.error("Async eval JSON generation/parsing failed: %s", e, exc_info=True)
@@ -199,14 +212,11 @@ class TreeOfThoughts:
             logger.debug("Simulation %d/%d", sim + 1, self.sims)
             leaf = self._select(root)
 
+            to_eval = leaf
             if len(leaf.steps) < self.max_depth:
                 self._expand(leaf, question)
                 if leaf.children:
                     to_eval = leaf.children[0]
-                else:
-                    to_eval = leaf
-            else:
-                to_eval = leaf
 
             value = self._evaluate(to_eval, question)
             self._backpropagate(to_eval, value)
@@ -218,13 +228,10 @@ class TreeOfThoughts:
             node = root
             path = [node]
             while node.children:
-                # Select child with highest visit count, breaking ties with value
                 best_child = max(node.children, key=lambda c: (c.visits, c.value()))
                 if best_child.visits == 0 and all(c.visits == 0 for c in node.children):
-                    # If no children visited, maybe pick highest prior or just the first?
-                    # Or stop traversal here? Let's pick the first for now.
                     best_child = node.children[0]
-                    logger.debug("No children visited, selecting first child %d", best_child.id)
+                    logger.debug("No children visited, selecting first available child")
                 node = best_child
                 path.append(node)
 
@@ -241,7 +248,6 @@ class TreeOfThoughts:
     async def run_async(self, question: str, semaphore: Optional[asyncio.Semaphore] = None) -> str:
         root = TreeOfThoughts._Node(steps=[], parent=None, prior=1.0)
 
-        # We need to run simulations sequentially as MCTS state depends on previous sims
         for sim in range(self.sims):
             logger.debug("Async Simulation %d/%d", sim + 1, self.sims)
             leaf = self._select(root)
@@ -250,9 +256,7 @@ class TreeOfThoughts:
             if len(leaf.steps) < self.max_depth:
                 await self._expand_async(leaf, question, semaphore)
                 if leaf.children:
-                    # Evaluate the first newly expanded child
                     eval_node = leaf.children[0]
-                # If expansion yielded no children, eval_node remains leaf
 
             value = await self._evaluate_async(eval_node, question, semaphore)
             self._backpropagate(eval_node, value)
@@ -267,9 +271,7 @@ class TreeOfThoughts:
                 best_child = max(node.children, key=lambda c: (c.visits, c.value()))
                 if best_child.visits == 0 and all(c.visits == 0 for c in node.children):
                     best_child = node.children[0]
-                    logger.debug(
-                        "Async: No children visited, selecting first child %d", best_child.id
-                    )
+                    logger.debug("Async: No children visited, selecting first available child")
                 node = best_child
                 path.append(node)
 

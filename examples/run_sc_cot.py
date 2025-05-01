@@ -15,11 +15,11 @@ logger = logging.getLogger(__name__)
 def setup_sc(llm: BaseLLM) -> SelfConsistency:
     return SelfConsistency(
         llm,
-        n_samples=5,  # Reduced samples for quicker example
+        n_samples=5,
         temperature=0.7,
         max_tokens=100,
         stop=["\n\n"],
-        use_json_parsing=False,
+        use_json_parsing=True,
     )
 
 

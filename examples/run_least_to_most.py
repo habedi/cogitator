@@ -18,7 +18,7 @@ QUESTIONS = [
 
 async def main_async(args: argparse.Namespace):
     llm = get_llm(args.provider, args.openai_key, args.ollama_model)
-    ltm = LeastToMost(llm)
+    ltm = LeastToMost(llm, use_json_parsing=True)
     semaphore = asyncio.Semaphore(5)
 
     logger.info("Running LeastToMost asynchronously...")
@@ -31,7 +31,7 @@ async def main_async(args: argparse.Namespace):
 
 def main_sync(args: argparse.Namespace):
     llm = get_llm(args.provider, args.openai_key, args.ollama_model)
-    ltm = LeastToMost(llm)
+    ltm = LeastToMost(llm, use_json_parsing=True)
 
     logger.info("Running LeastToMost synchronously...")
     for q in QUESTIONS:

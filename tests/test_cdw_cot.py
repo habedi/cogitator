@@ -3,10 +3,6 @@ import pytest
 from cogitator.cdw_cot import CDWCoT
 
 
-# No need to import BaseLLM, FakeLLM, embedding/clustering modules
-
-
-# Use fixtures defined in conftest.py by adding them as arguments
 def test_init_pool_builds_candidate_pool(fake_llm_factory, patch_embedding_clustering):
     questions = [f"q{i}" for i in range(8)]
     answers = [f"a{i}" for i in range(8)]

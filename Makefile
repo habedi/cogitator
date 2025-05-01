@@ -27,10 +27,6 @@ setup: ## Install system dependencies
 install: ## Install Python dependencies
 	$(POETRY) install --with dev
 
-.PHONY: update
-update: ## Update Python dependencies
-	$(POETRY) update
-
 # Testing and linting
 .PHONY: test
 test: ## Run the tests
@@ -45,12 +41,12 @@ format: ## Format the Python files
 	$(POETRY) run ruff format .
 
 .PHONY: typecheck
-typecheck: ## Typecheck the code
+typecheck: ## Typecheck the Python files
 	$(POETRY) run mypy .
 
 # Cleaning
 .PHONY: clean
-clean: ## Remove temporary files and directories
+clean: ## Remove build artifacts, caches, and temporary files
 	find . -type f -name '*.pyc' -delete
 	find . -type d -name '__pycache__' -exec rm -r {} +
 	rm -rf .mypy_cache .pytest_cache .ruff_cache .coverage htmlcov coverage.xml junit
@@ -69,21 +65,11 @@ publish: ## Publish the library to PyPI (requires PYPI_TOKEN to be set)
 .PHONY: check
 check: lint typecheck test ## Run linter checks, typechecking, and tests
 
-.PHONY: precommit
-precommit: ## Install and run pre-commit hooks
-	$(POETRY) run pre-commit install
-	$(POETRY) run pre-commit run --all-files
-
-# Benchmarks and examples
-.PHONY: bench
-bench: ## Run the benchmarks
-	@$(POETRY) run python $(BENCH_DIR)/run.py
-
-.PHONY: example
-example: ## Run the examples
+.PHONY: example-openai
+example-openai: ## Run the examples using OpenAI (requires OPENAI_API_KEY to be set)
 	@for script in $(EXAMPLE_DIR)/run_*.py; do \
 	   echo "Running $$script..."; \
-	   $(POETRY) run python $$script --openai-key $(OPENAI_API_KEY); \
+	   $(POETRY) run python $$script --provider openai --openai-key $(OPENAI_API_KEY); \
 	done
 
 example-ollama: ## Run the examples using Ollama (accepts OLLAMA_MODEL as an argument)

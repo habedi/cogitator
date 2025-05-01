@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 def setup_got(llm: BaseLLM) -> GraphOfThoughts:
-    return GraphOfThoughts(llm, max_iters=2, num_branches=2, beam_width=2, merge_threshold=0.9)
+    return GraphOfThoughts(
+        llm, max_iters=2, num_branches=2, beam_width=2, use_json=True, merge_threshold=0.9
+    )
 
 
 QUESTIONS = [

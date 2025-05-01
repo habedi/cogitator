@@ -71,7 +71,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to make a contribution
 
 ### Logo
 
-The logo is named the "Cognition" and was created by [vectordoodle](https://www.svgrepo.com/author/vectordoodle).
+The logo is named the "Cognition" and originally was created by
+[vectordoodle](https://www.svgrepo.com/author/vectordoodle).
 
 ### License
 

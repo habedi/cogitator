@@ -3,16 +3,10 @@ import pytest
 from cogitator.auto_cot import AutoCoT
 
 
-# No need to import BaseLLM or FakeLLM here anymore
-# No need to import embedding/clustering modules directly
-
-
-# Use fixtures defined in conftest.py by adding them as arguments
 def test_fit_builds_expected_number_of_demos(fake_llm_factory, patch_embedding_clustering):
-    questions = [f"q{i}" for i in range(8)]  # Need enough for n_demos
-    # Create a fake LLM instance using the factory
+    questions = [f"q{i}" for i in range(8)]
     llm = fake_llm_factory({
-        "generate_sync": "Step 1\nStep 2"  # Configure sync response
+        "generate_sync": "Step 1\nStep 2"
     })
     ac = AutoCoT(llm, n_demos=2, max_q_tokens=100, max_steps=5)
     ac.fit(questions)

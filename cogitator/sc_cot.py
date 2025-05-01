@@ -5,6 +5,7 @@ from collections import Counter
 from typing import Any, AsyncIterator, Iterator, List, Optional, Tuple
 
 from .model import BaseLLM
+from .schemas import ExtractedAnswer
 
 logger = logging.getLogger(__name__)
 
@@ -58,12 +59,31 @@ class SelfConsistency:
             return cot.strip()
         last = lines[-1]
 
-        for prefix in ["Therefore", "Answer", "Ans", "The answer is"]:
-            m = re.match(rf"^{re.escape(prefix)}\s*:?\s*(.*)", last, re.IGNORECASE)
-            if m and m.group(1).strip():
-                extracted = m.group(1).strip(" .,:;")
-                logger.debug("Heuristic extracted via prefix '%s': '%s'", prefix, extracted)
-                return extracted
+        for prefix in ["Therefore", "Answer", "Ans", "The answer is", "Final Answer"]:
+            # Pattern tries to match: Prefix whitespace Optional(is) whitespace Optional(:) whitespace Value
+            # Making 'is' and ':' optional and capturing everything after
+            pattern = rf"^{re.escape(prefix)}\s*(?:is)?\s*:?\s*(.*)"  # Revert to previous simpler pattern for broader match
+            m = re.match(pattern, last, re.IGNORECASE)
+            if m:
+                potential_answer = m.group(1).strip(" .,:;")
+                if potential_answer:  # Check if something was captured
+                    # Additional check: if the prefix was 'Therefore', try to strip leading 'the answer is' etc.
+                    if prefix.lower() == "therefore":
+                        follow_up_match = re.match(
+                            r"^(?:the\s+answer\s+is|answer\s+is|is)\s*:?\s*(.*)",
+                            potential_answer,
+                            re.IGNORECASE,
+                        )
+                        if follow_up_match and follow_up_match.group(1).strip():
+                            extracted = follow_up_match.group(1).strip(" .,:;")
+                            logger.debug(
+                                "Heuristic extracted via '%s' + follow-up: '%s'", prefix, extracted
+                            )
+                            return extracted
+                    # If not 'Therefore' or no follow-up match, return the initial capture
+                    extracted = potential_answer
+                    logger.debug("Heuristic extracted via prefix '%s': '%s'", prefix, extracted)
+                    return extracted
 
         if "=" in last:
             parts = last.split("=", 1)
@@ -72,14 +92,12 @@ class SelfConsistency:
                 logger.debug("Heuristic extracted via '=' sign: '%s'", extracted)
                 return extracted
 
-        # Use re.match with anchors to check if the *entire* last line is essentially a number
         m_last_line_num = re.match(r"^\s*[\$€£]?\s*([-+]?\d*\.?\d+)\s*$", last)
         if m_last_line_num and m_last_line_num.group(1) != ".":
             extracted = m_last_line_num.group(1)
             logger.debug("Heuristic extracted via full numeric match on last line: '%s'", extracted)
             return extracted
 
-        # Ultimate fallback: return the last line if nothing else worked
         logger.debug("Heuristic fallback to last line (default): '%s'", last)
         return last
 
@@ -89,13 +107,15 @@ class SelfConsistency:
         prompt = self.answer_extraction_prompt.format(cot=cot)
         logger.debug("Attempting JSON extraction with prompt:\n%s", prompt)
         try:
-            result = self.llm.generate_json(prompt)
+            result = self.llm.generate_json(prompt, response_model=ExtractedAnswer)
             logger.debug("JSON extraction result: %s", result)
-            if isinstance(result, dict) and "final_answer" in result:
-                extracted = str(result["final_answer"]).strip()
+            # Check result type based on Pydantic validation
+            if isinstance(result, ExtractedAnswer):
+                extracted = str(result.final_answer).strip()
                 logger.debug("JSON extracted answer: '%s'", extracted)
                 return extracted
-            logger.warning("JSON extraction unexpected format: %s", result)
+            # This case might be less likely if generate_json returns the model or raises error
+            logger.warning("JSON extraction did not return expected model type: %s", type(result))
         except Exception as e:
             logger.error("JSON extraction failed: %s", e, exc_info=True)
 
@@ -108,13 +128,15 @@ class SelfConsistency:
         prompt = self.answer_extraction_prompt.format(cot=cot)
         logger.debug("Attempting async JSON extraction with prompt:\n%s", prompt)
         try:
-            result = await self.llm.generate_json_async(prompt)
+            result = await self.llm.generate_json_async(prompt, response_model=ExtractedAnswer)
             logger.debug("Async JSON extraction result: %s", result)
-            if isinstance(result, dict) and "final_answer" in result:
-                extracted = str(result["final_answer"]).strip()
+            if isinstance(result, ExtractedAnswer):
+                extracted = str(result.final_answer).strip()
                 logger.debug("Async JSON extracted answer: '%s'", extracted)
                 return extracted
-            logger.warning("Async JSON extraction unexpected format: %s", result)
+            logger.warning(
+                "Async JSON extraction did not return expected model type: %s", type(result)
+            )
         except Exception as e:
             logger.error("Async JSON extraction failed: %s", e, exc_info=True)
 

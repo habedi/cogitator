@@ -3,48 +3,66 @@ import asyncio
 import pytest
 
 from cogitator.sc_cot import SelfConsistency
+from cogitator.schemas import ExtractedAnswer
 
 
-# --- Sync Tests ---
-def test_extract_answer_with_equal_sign():
+def test_extract_answer_heuristic_with_equal_sign():
     sc = SelfConsistency(llm=None)
-    assert sc.extract_answer("…\n4+1 = 5") == "5"
-    assert sc.extract_answer("Result=42.") == "42"
+    assert sc._extract_answer_heuristic("…\n4+1 = 5") == "5"
+    assert sc._extract_answer_heuristic("Result=42.") == "42"
 
 
-def test_extract_answer_with_prefixes():
+def test_extract_answer_heuristic_with_prefixes():
     sc = SelfConsistency(llm=None)
-    assert sc.extract_answer("Therefore, the answer is 7.") == "the answer is 7"
-    assert sc.extract_answer("Answer: 99") == "99"
-    assert sc.extract_answer("Ans 13") == "13"
+    assert sc._extract_answer_heuristic("Therefore, the answer is 7.") == "7"
+    assert sc._extract_answer_heuristic("Answer: 99") == "99"
+    assert sc._extract_answer_heuristic("Ans 13") == "13"
+    assert sc._extract_answer_heuristic("### 123") == "123"
+    assert sc._extract_answer_heuristic("Final Answer: foo bar") == "foo bar"
 
 
-def test_extract_answer_last_line_fallback():
+def test_extract_answer_heuristic_last_line_fallback():
     sc = SelfConsistency(llm=None)
-    cot = "Step1\nSome thought\nFinal thought"
-    assert sc.extract_answer(cot) == "Final thought"
+    cot = "Step1\nSome thought\nFinal numerical answer 100"
+    assert sc._extract_answer_heuristic(cot) == "Final numerical answer 100"
 
 
-def test_run_majority_vote(fake_llm_factory):
-    responses = ["…\nAnswer: X", "…\nAnswer: X", "…\nAnswer: Y"]
-    # Need a way for the fake LLM to cycle through responses
-    # Let's enhance the factory or fake LLM for this if needed,
-    # or assume the base FakeLLM can handle it via config (e.g., list of responses)
-    # For now, assume default response "SYNC_RESPONSE" which isn't ideal here.
-    # A better FakeLLM would accept a list/callable for responses.
-    # Let's manually configure specific responses for this test.
-    config = {
-        "generate_sync_callable": lambda p, i: responses[i % len(responses)]
-    }
-    # TODO: Enhance ConfigurableFakeLLM to accept callables or response lists
-    # For now, this test might not work perfectly with the generic fake_llm
-    # Let's skip the assertion that depends on cycling responses for now
-    # llm = fake_llm_factory(config) # Needs enhancement
-    llm = fake_llm_factory({"generate_sync": "...\nAnswer: X"})  # Temporary simplification
+def test_extract_answer_heuristic_numeric_last_line():
+    sc = SelfConsistency(llm=None)
+    cot = "Step1\nSome thought\n12345"
+    assert sc._extract_answer_heuristic(cot) == "12345"
+    cot_dollar = "Step1\nSome thought\n$56.78"
+    assert sc._extract_answer_heuristic(cot_dollar) == "56.78"
+
+
+def test_run_majority_vote_heuristic(fake_llm_factory):
+    responses = ["...\nAns 10", "...\nFinal Answer: 10", "...\nResult=5"]
+
+    llm = fake_llm_factory({"generate_sync": responses})
+
     sc = SelfConsistency(llm=llm, n_samples=3)
     out = sc.run("dummy prompt")
-    # assert out == "X" # Assertion might fail without cycling responses
+
+    assert out == "10"
     assert len(llm.sync_calls) == 3
+
+
+def test_extract_answer_json_path(fake_llm_factory):
+    expected_answer = "AnswerFromJSON"
+
+    llm = fake_llm_factory({
+        "json_answer": ExtractedAnswer(final_answer=expected_answer)
+    })
+
+    sc = SelfConsistency(llm=llm, use_json_parsing=True)
+
+    extracted = sc.extract_answer("Some reasoning text...")
+
+    assert extracted == expected_answer
+
+    assert len(llm.sync_calls) == 1
+    assert llm.sync_calls[0]["type"] == "_generate_json_internal"
+    assert llm.sync_calls[0]["response_model"] == "ExtractedAnswer"
 
 
 def test_run_stream_not_implemented(fake_llm_factory):
@@ -54,56 +72,56 @@ def test_run_stream_not_implemented(fake_llm_factory):
         next(sc.run_stream("anything"))
 
 
-# --- Async Tests ---
 @pytest.mark.asyncio
 async def test_extract_answer_async_heuristic():
     sc = SelfConsistency(llm=None)
     assert await sc.extract_answer_async("...\nFinal Answer: ABC_async") == "ABC_async"
+    assert await sc.extract_answer_async("...\nResult=55_async") == "55_async"
 
 
 @pytest.mark.asyncio
-async def test_run_async_majority_vote(fake_llm_factory):
-    # Configure specific async responses
-    responses = ["…\nAnswer: AsyncX", "…\nAnswer: AsyncX", "…\nAnswer: AsyncY"]
-    call_count = 0
+async def test_run_async_majority_vote_heuristic(fake_llm_factory):
+    responses = ["...\nAns Async10", "...\nFinal Answer: Async10", "...\nResult=Async5"]
 
-    def get_async_resp(prompt, **kwargs):
-        nonlocal call_count
-        resp = responses[call_count % len(responses)] + "_async"
-        call_count += 1
-        return resp
+    llm = fake_llm_factory({"generate_async": responses})
 
-    llm = fake_llm_factory({"generate_async": get_async_resp})  # Pass callable
-    # TODO: Enhance ConfigurableFakeLLM to accept callables properly
-    # Using default fake LLM for now, which doesn't cycle
-    llm_simple = fake_llm_factory({"generate_async": "...\nAnswer: AsyncX_async"})
-    sc = SelfConsistency(llm=llm_simple, n_samples=3)
-
+    sc = SelfConsistency(llm=llm, n_samples=3)
     out = await sc.run_async("dummy async prompt")
-    # Heuristic extracts 'AsyncX_async'
-    assert out == "AsyncX_async"  # Updated assertion
-    assert len(llm_simple.async_calls) == 3
+
+    assert out == "Async10"
+    assert len(llm.async_calls) == 3
+
+
+@pytest.mark.asyncio
+async def test_extract_answer_json_async_path(fake_llm_factory):
+    expected_answer = "AsyncAnswerFromJSON"
+
+    llm = fake_llm_factory({
+        "json_answer": ExtractedAnswer(final_answer=expected_answer)
+    })
+
+    sc = SelfConsistency(llm=llm, use_json_parsing=True)
+
+    extracted = await sc.extract_answer_async("Some async reasoning text...")
+
+    assert extracted == expected_answer
+
+    assert len(llm.async_calls) == 1
+    assert llm.async_calls[0]["type"] == "_generate_json_internal_async"
+    assert llm.async_calls[0]["response_model"] == "ExtractedAnswer"
 
 
 @pytest.mark.asyncio
 async def test_run_async_with_semaphore(fake_llm_factory):
     responses = ["…\nAnswer: S1", "…\nAnswer: S2", "…\nAnswer: S1"]
-    call_count = 0
 
-    def get_async_resp(prompt, **kwargs):
-        nonlocal call_count
-        resp = responses[call_count % len(responses)] + "_async"
-        call_count += 1
-        return resp
-
-    # TODO: Enhance ConfigurableFakeLLM
-    llm_simple = fake_llm_factory({"generate_async": "...\nAnswer: S1_async"})  # Simplify for now
-    sc = SelfConsistency(llm=llm_simple, n_samples=3)
+    llm = fake_llm_factory({"generate_async": responses})
+    sc = SelfConsistency(llm=llm, n_samples=3)
     semaphore = asyncio.Semaphore(2)
     out = await sc.run_async("dummy async prompt semaphore", semaphore=semaphore)
-    # Heuristic extracts 'S1_async'
-    assert out == "S1_async"  # Updated assertion
-    assert len(llm_simple.async_calls) == 3
+
+    assert out == "S1"
+    assert len(llm.async_calls) == 3
 
 
 @pytest.mark.asyncio
