@@ -4,7 +4,6 @@ import asyncio
 import logging
 
 from cogitator.least_to_most import LeastToMost
-
 from examples.shared import get_llm, run_main, setup_logging
 
 setup_logging()
@@ -17,7 +16,7 @@ QUESTIONS = [
 
 
 async def main_async(args: argparse.Namespace):
-    llm = get_llm(args.provider, args.openai_key, args.ollama_model)
+    llm = get_llm(args.provider, args.model_name, args.openai_key)
     ltm = LeastToMost(llm, use_json_parsing=True)
     semaphore = asyncio.Semaphore(5)
 
@@ -30,7 +29,7 @@ async def main_async(args: argparse.Namespace):
 
 
 def main_sync(args: argparse.Namespace):
-    llm = get_llm(args.provider, args.openai_key, args.ollama_model)
+    llm = get_llm(args.provider, args.model_name, args.openai_key)
     ltm = LeastToMost(llm, use_json_parsing=True)
 
     logger.info("Running LeastToMost synchronously...")

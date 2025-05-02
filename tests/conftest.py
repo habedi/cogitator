@@ -1,3 +1,4 @@
+# tests/conftest.py
 import asyncio
 import json
 import logging
@@ -24,7 +25,7 @@ DEFAULT_ASYNC_RESPONSE = "ASYNC_RESPONSE"
 DEFAULT_JSON_RESPONSE = ExtractedAnswer(final_answer="json_sync_default")
 DEFAULT_ASYNC_JSON_RESPONSE = ExtractedAnswer(final_answer="json_async_default")
 DEFAULT_FINAL_ANSWER = "FINAL_ANSWER_DEFAULT"
-DEFAULT_SUBYoutube = "SUBYoutube_DEFAULT"
+DEFAULT_SUBANSWER = "SUBANSWER_DEFAULT" # Typo fixed
 DEFAULT_JSON_STEPS = ThoughtExpansion(thoughts=["step1_default_sync"])
 DEFAULT_ASYNC_JSON_STEPS = ThoughtExpansion(thoughts=["step1_default_async"])
 DEFAULT_JSON_SUBQUESTIONS = LTMDecomposition(subquestions=["subq1_default_sync"])
@@ -73,83 +74,83 @@ class ConfigurableFakeLLM(BaseLLM):
         if prompt in self.responses_map:
             return self.responses_map[prompt]
 
-        if "JSON Steps:" in prompt:
+        # Use specific keys from test config first if prompt matches
+        # Check for ToT/GoT expansion prompts first
+        is_json_method = "json" in method_type
+        if "JSON Output:" in prompt and "thoughts" in prompt: # ToT Expansion
+            key = "json_steps"
             default = DEFAULT_ASYNC_JSON_STEPS if 'async' in method_type else DEFAULT_JSON_STEPS
-            return self._get_next_response(method_type, "json_steps", default)
-        if "JSON Evaluation:" in prompt:
-            default = DEFAULT_ASYNC_JSON_EVAL if 'async' in method_type else DEFAULT_JSON_EVAL
-            return self._get_next_response(method_type, "json_eval", default)
-        if "JSON Subquestions:" in prompt:
+        elif "JSON list of strings" in prompt: # GoT Expansion (non-JSON mode)
+            key = "generate_async" if 'async' in method_type else "generate_sync" # Matches test setup key
+            default = json.dumps(DEFAULT_ASYNC_JSON_STEPS.model_dump()) if 'async' in method_type else json.dumps(DEFAULT_JSON_STEPS.model_dump())
+        elif "JSON Output:" in prompt and "subquestions" in prompt: # LtM Decomposition
+            key = "json_subquestions"
             default = DEFAULT_ASYNC_JSON_SUBQUESTIONS if 'async' in method_type else DEFAULT_JSON_SUBQUESTIONS
-            return self._get_next_response(method_type, "json_subquestions", default)
-        if "JSON Answer:" in prompt:
+        elif "JSON Evaluation:" in prompt: # ToT/GoT Evaluation
+            key = "json_eval"
+            default = DEFAULT_ASYNC_JSON_EVAL if 'async' in method_type else DEFAULT_JSON_EVAL
+        elif "JSON Answer:" in prompt: # LtM/SC Answer Extraction
+            key = "json_answer"
             default = DEFAULT_ASYNC_JSON_RESPONSE if 'async' in method_type else DEFAULT_JSON_RESPONSE
-            return self._get_next_response(method_type, "json_answer", default)
-        if "Current Subquestion:" in prompt:
-            default = DEFAULT_SUBYoutube + ("_async" if 'async' in method_type else "")
-            return self._get_next_response(method_type, "sub_answer", default)
-        if "Final Answer:" in prompt or "Given reasoning steps" in prompt:
+        elif "Current Subquestion:" in prompt: # LtM Solving
+            key = "sub_answer"
+            default = DEFAULT_SUBANSWER + ("_async" if 'async' in method_type else "")
+        elif "Given reasoning steps" in prompt \
+            or prompt.startswith("Answer the question:") \
+            or prompt.startswith("Based on the following sequential subquestions"): # Final answers
+            key = "final_answer"
             default = DEFAULT_FINAL_ANSWER + ("_async" if 'async' in method_type else "")
-            return self._get_next_response(method_type, "final_answer", default)
+        else: # Fallback keys based on method type
+            if method_type == "generate": key, default = "generate_sync", DEFAULT_SYNC_RESPONSE
+            elif method_type == "generate_async": key, default = "generate_async", DEFAULT_ASYNC_RESPONSE
+            elif method_type == "_generate_json_internal": key, default = "generate_json", DEFAULT_JSON_RESPONSE
+            elif method_type == "_generate_json_internal_async": key, default = "generate_json_async", DEFAULT_ASYNC_JSON_RESPONSE
+            elif method_type == "stream": key, default = "generate_sync", DEFAULT_SYNC_RESPONSE
+            elif method_type == "async_stream": key, default = "generate_async", DEFAULT_ASYNC_RESPONSE
+            else: key, default = "unhandled", "UNHANDLED_FAKE_RESPONSE"
 
-        if method_type == "generate":
-            return self._get_next_response(method_type, "generate_sync", DEFAULT_SYNC_RESPONSE)
-        if method_type == "generate_async":
-            return self._get_next_response(method_type, "generate_async", DEFAULT_ASYNC_RESPONSE)
-        if method_type == "_generate_json_internal":
-            return self._get_next_response(method_type, "generate_json", DEFAULT_JSON_RESPONSE)
-        if method_type == "_generate_json_internal_async":
-            return self._get_next_response(method_type, "generate_json_async",
-                                           DEFAULT_ASYNC_JSON_RESPONSE)
-        if method_type == "stream":
-            return self._get_next_response(method_type, "generate_sync", DEFAULT_SYNC_RESPONSE)
-        if method_type == "async_stream":
-            return self._get_next_response(method_type, "generate_async", DEFAULT_ASYNC_RESPONSE)
+        return self._get_next_response(method_type, key, default)
 
-        logger.warning(f"No specific response configured for prompt in {method_type}: {prompt}")
-        if method_type in self._call_counts:
-            self._call_counts[method_type] += 1
-        return "UNHANDLED_FAKE_RESPONSE"
 
     def generate(self, prompt: str, **kwargs: Any) -> str:
         self.sync_calls.append({"type": "generate", "prompt": prompt, "kwargs": kwargs})
         response = self._get_response_for_prompt(prompt, "generate")
+        # generate should return a string. If the configured response isn't one, stringify it.
+        if not isinstance(response, str):
+            try:
+                # Handle Pydantic models and dicts/lists specifically for JSON-like strings
+                if isinstance(response, BaseModel): return response.model_dump_json()
+                if isinstance(response, (dict, list)): return json.dumps(response)
+            except Exception:
+                pass # Fallback to str()
+            return str(response)
+        return response
 
-        if "JSON Steps:" in prompt:
-            if isinstance(response, BaseModel):
-                return response.model_dump_json()
-            elif isinstance(response, (dict, list)):
-                return json.dumps(response)
-            elif isinstance(response, str):
-                return response
-
-        return str(response)
 
     async def generate_async(self, prompt: str, **kwargs: Any) -> str:
         self.async_calls.append({"type": "generate_async", "prompt": prompt, "kwargs": kwargs})
         await asyncio.sleep(0.001)
         response = self._get_response_for_prompt(prompt, "generate_async")
-
-        if "JSON Steps:" in prompt:
-            if isinstance(response, BaseModel):
-                return response.model_dump_json()
-            elif isinstance(response, (dict, list)):
-                return json.dumps(response)
-            elif isinstance(response, str):
-                return response
-
-        return str(response)
+        # generate_async should return a string.
+        if not isinstance(response, str):
+            try:
+                if isinstance(response, BaseModel): return response.model_dump_json()
+                if isinstance(response, (dict, list)): return json.dumps(response)
+            except Exception:
+                pass
+            return str(response)
+        return response
 
     def generate_stream(self, prompt: str, **kwargs: Any) -> Iterator[str]:
         self.sync_calls.append({"type": "stream", "prompt": prompt, "kwargs": kwargs})
         response = self._get_response_for_prompt(prompt, "stream")
-        yield str(response) + "_stream"
+        yield str(response) + "_stream" # Ensure string for stream
 
     async def generate_stream_async(self, prompt: str, **kwargs: Any) -> AsyncIterator[str]:
         self.async_calls.append({"type": "async_stream", "prompt": prompt, "kwargs": kwargs})
         await asyncio.sleep(0.001)
         response = self._get_response_for_prompt(prompt, "async_stream")
-        yield str(response) + "_async_stream"
+        yield str(response) + "_async_stream" # Ensure string for stream
 
     def _generate_json_internal(self, prompt: str, response_model: Type[BaseModel],
                                 **kwargs: Any) -> str:
@@ -161,13 +162,24 @@ class ConfigurableFakeLLM(BaseLLM):
         })
         response_obj = self._get_response_for_prompt(prompt, "_generate_json_internal")
 
+        # These methods MUST return a JSON string representation
         if isinstance(response_obj, BaseModel):
             return response_obj.model_dump_json()
         elif isinstance(response_obj, dict):
             return json.dumps(response_obj)
         elif isinstance(response_obj, str):
-            return response_obj
-        return str(response_obj)
+            try:
+                json.loads(response_obj) # Verify it's valid JSON if already string
+                return response_obj
+            except json.JSONDecodeError:
+                logger.warning(f"Configured string response for JSON prompt is not valid JSON: {response_obj}")
+                return "{}" # Return empty JSON
+        # Attempt to dump other types
+        try:
+            return json.dumps(response_obj)
+        except TypeError:
+            logger.warning(f"Cannot dump configured response to JSON: {type(response_obj)}")
+            return "{}"
 
     async def _generate_json_internal_async(self, prompt: str, response_model: Type[BaseModel],
                                             **kwargs: Any) -> str:
@@ -179,13 +191,24 @@ class ConfigurableFakeLLM(BaseLLM):
         })
         await asyncio.sleep(0.001)
         response_obj = self._get_response_for_prompt(prompt, "_generate_json_internal_async")
+
+        # These methods MUST return a JSON string representation
         if isinstance(response_obj, BaseModel):
             return response_obj.model_dump_json()
         elif isinstance(response_obj, dict):
             return json.dumps(response_obj)
         elif isinstance(response_obj, str):
-            return response_obj
-        return str(response_obj)
+            try:
+                json.loads(response_obj)
+                return response_obj
+            except json.JSONDecodeError:
+                logger.warning(f"Configured string response for async JSON prompt is not valid JSON: {response_obj}")
+                return "{}"
+        try:
+            return json.dumps(response_obj)
+        except TypeError:
+            logger.warning(f"Cannot dump configured async response to JSON: {type(response_obj)}")
+            return "{}"
 
 
 @pytest.fixture
@@ -202,26 +225,38 @@ def patch_embedding_clustering(monkeypatch):
 
     def fake_encode(texts: List[str]) -> List[np.ndarray]:
         logger.debug(f"Fake encoding texts: {texts}")
-        return [np.array([float(i)], dtype=float) for i in range(len(texts))]
+        # Return arrays of consistent dimension, e.g., 2D
+        return [np.array([float(i), float(i+1)], dtype=float) for i in range(len(texts))]
 
     monkeypatch.setattr(emb_module, "encode", fake_encode)
 
     def fake_cluster(embs: np.ndarray, n_clusters: int, random_state: int = 33) -> tuple[
         np.ndarray, np.ndarray]:
         logger.debug(f"Fake clustering embeddings (shape {embs.shape}) into {n_clusters} clusters")
-        embedding_values = embs.flatten()
-        if len(embedding_values) == 0 or n_clusters <= 0:
+        # Ensure output dimension matches fake_encode output dimension (2)
+        if embs.shape[0] == 0 or n_clusters <= 0:
+            # Handle case where input embeddings might have 0 columns if texts list was empty
+            output_dim = embs.shape[1] if len(embs.shape) > 1 and embs.shape[1] > 0 else 1
             labels = np.array([], dtype=int)
-            centers = np.array([], dtype=float).reshape(0, 1)
+            centers = np.array([], dtype=float).reshape(0, output_dim)
+
         else:
-            n_clusters = min(n_clusters, len(embedding_values))
-            labels = (embedding_values % n_clusters).astype(int)
-            centers = np.array([embedding_values[labels == i].mean() if np.any(labels == i) else 0.0
+            output_dim = embs.shape[1]
+            n_clusters = min(n_clusters, embs.shape[0])
+            # Simple modulo assignment for labels based on first element
+            labels = (embs[:, 0] % n_clusters).astype(int)
+            # Calculate mean center for each cluster based on 2D points
+            centers = np.array([embs[labels == i].mean(axis=0) if np.any(labels == i) else np.zeros(output_dim)
                                 for i in range(n_clusters)])
-            centers = centers.reshape(-1, 1)
+            # Ensure centers is 2D even if only one cluster
+            if centers.ndim == 1 and output_dim > 0:
+                centers = centers.reshape(-1, output_dim)
+            elif centers.ndim == 0 and output_dim == 0: # Handle scalar case if needed
+                centers = centers.reshape(n_clusters, 1) # Or shape (n_clusters,) depending on downstream use
+
 
         logger.debug(f"Generated labels: {labels}")
-        logger.debug(f"Generated centers: {centers}")
+        logger.debug(f"Generated centers shape: {centers.shape}")
         return labels, centers
 
     monkeypatch.setattr(clust_module, "cluster_embeddings", fake_cluster)

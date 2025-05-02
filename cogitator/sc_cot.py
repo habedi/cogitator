@@ -1,8 +1,8 @@
 import asyncio
 import logging
-import re
 from collections import Counter
-from typing import Any, AsyncIterator, Iterator, List, Optional, Tuple
+from typing import Any, AsyncIterator, Iterator, List, Optional
+import re
 
 from .model import BaseLLM
 from .schemas import ExtractedAnswer
@@ -20,6 +20,7 @@ class SelfConsistency:
         stop: Optional[List[str]] = None,
         use_json_parsing: bool = False,
         answer_extraction_prompt: Optional[str] = None,
+        seed: Optional[int] = None,
         **gen_kwargs: Any,
     ):
         self.llm = llm
@@ -28,7 +29,8 @@ class SelfConsistency:
         self.max_tokens = max_tokens
         self.stop = stop
         self.use_json_parsing = use_json_parsing
-
+        self.seed = seed
+        self.gen_kwargs = gen_kwargs
         if use_json_parsing:
             self.answer_extraction_prompt = (
                 answer_extraction_prompt
@@ -39,108 +41,59 @@ class SelfConsistency:
         else:
             self.answer_extraction_prompt = None
 
-        self.gen_kwargs = gen_kwargs
-
     def _extract_answer_heuristic(self, cot: str) -> str:
-        if not cot:
-            return ""
-
-        markers = [r"(?:Final Answer|The final answer is)\s*:?\s*(.*)", r"###\s*(.*)"]
-        for pattern in markers:
-            m = re.search(pattern, cot, re.IGNORECASE | re.MULTILINE)
-            if m and m.group(1).strip():
-                extracted = m.group(1).strip(" .,:;")
-                logger.debug("Heuristic extracted via marker: '%s'", extracted)
-                return extracted
-
-        lines = [line.strip() for line in cot.splitlines() if line.strip()]
-        if not lines:
-            logger.debug("Heuristic found no non-empty lines, returning original: '%.50s'", cot)
-            return cot.strip()
-        last = lines[-1]
-
-        for prefix in ["Therefore", "Answer", "Ans", "The answer is", "Final Answer"]:
-            # Pattern tries to match: Prefix whitespace Optional(is) whitespace Optional(:) whitespace Value
-            # Making 'is' and ':' optional and capturing everything after
-            pattern = rf"^{re.escape(prefix)}\s*(?:is)?\s*:?\s*(.*)"  # Revert to previous simpler pattern for broader match
-            m = re.match(pattern, last, re.IGNORECASE)
-            if m:
-                potential_answer = m.group(1).strip(" .,:;")
-                if potential_answer:  # Check if something was captured
-                    # Additional check: if the prefix was 'Therefore', try to strip leading 'the answer is' etc.
-                    if prefix.lower() == "therefore":
-                        follow_up_match = re.match(
-                            r"^(?:the\s+answer\s+is|answer\s+is|is)\s*:?\s*(.*)",
-                            potential_answer,
-                            re.IGNORECASE,
-                        )
-                        if follow_up_match and follow_up_match.group(1).strip():
-                            extracted = follow_up_match.group(1).strip(" .,:;")
-                            logger.debug(
-                                "Heuristic extracted via '%s' + follow-up: '%s'", prefix, extracted
-                            )
-                            return extracted
-                    # If not 'Therefore' or no follow-up match, return the initial capture
-                    extracted = potential_answer
-                    logger.debug("Heuristic extracted via prefix '%s': '%s'", prefix, extracted)
-                    return extracted
-
-        if "=" in last:
-            parts = last.split("=", 1)
-            if len(parts) > 1 and parts[1].strip():
-                extracted = parts[1].strip(" .,:;")
-                logger.debug("Heuristic extracted via '=' sign: '%s'", extracted)
-                return extracted
-
-        m_last_line_num = re.match(r"^\s*[\$€£]?\s*([-+]?\d*\.?\d+)\s*$", last)
-        if m_last_line_num and m_last_line_num.group(1) != ".":
-            extracted = m_last_line_num.group(1)
-            logger.debug("Heuristic extracted via full numeric match on last line: '%s'", extracted)
-            return extracted
-
-        logger.debug("Heuristic fallback to last line (default): '%s'", last)
-        return last
+        lines = cot.strip().splitlines()
+        for line in reversed(lines):
+            text = line.strip().rstrip(".")
+            # 1) explicit equals
+            if "=" in text:
+                return text.split("=", 1)[1].strip().lstrip("$").strip()
+            # 2) “the answer is X”
+            m0 = re.search(r"(?i)\bthe answer is\s+(\S+)", text)
+            if m0:
+                return m0.group(1).lstrip("$").strip()
+            # 3) starts with Answer:, Ans, Final Answer:
+            m1 = re.match(r"(?i)^(?:Answer|Final Answer|Ans)\b[: ]\s*(.+)$", text)
+            if m1:
+                return m1.group(1).strip()
+            # 4) markdown heading + number, e.g. “### 123”
+            m2 = re.match(r"^#+\s*([+-]?\d+(?:\.\d+)?)$", text)
+            if m2:
+                return m2.group(1)
+            # 5) pure number
+            if re.fullmatch(r"\$?[+-]?\d+(?:\.\d+)?", text):
+                return text.lstrip("$")
+        # fallback: last line
+        return lines[-1].strip()
 
     def _extract_answer_json(self, cot: str) -> str:
-        if not self.answer_extraction_prompt:
-            raise ValueError("JSON parsing enabled but no extraction prompt defined.")
         prompt = self.answer_extraction_prompt.format(cot=cot)
         logger.debug("Attempting JSON extraction with prompt:\n%s", prompt)
         try:
-            result = self.llm.generate_json(prompt, response_model=ExtractedAnswer)
-            logger.debug("JSON extraction result: %s", result)
-            # Check result type based on Pydantic validation
-            if isinstance(result, ExtractedAnswer):
-                extracted = str(result.final_answer).strip()
-                logger.debug("JSON extracted answer: '%s'", extracted)
-                return extracted
-            # This case might be less likely if generate_json returns the model or raises error
-            logger.warning("JSON extraction did not return expected model type: %s", type(result))
+            result = self.llm.generate_json(
+                prompt,
+                response_model=ExtractedAnswer,
+                max_tokens=self.max_tokens,
+                seed=self.seed,
+            )
+            return str(result.final_answer).strip()
         except Exception as e:
             logger.error("JSON extraction failed: %s", e, exc_info=True)
-
-        logger.debug("Falling back to heuristic extraction after JSON failure.")
         return self._extract_answer_heuristic(cot)
 
     async def _extract_answer_json_async(self, cot: str) -> str:
-        if not self.answer_extraction_prompt:
-            raise ValueError("JSON parsing enabled but no extraction prompt defined.")
         prompt = self.answer_extraction_prompt.format(cot=cot)
         logger.debug("Attempting async JSON extraction with prompt:\n%s", prompt)
         try:
-            result = await self.llm.generate_json_async(prompt, response_model=ExtractedAnswer)
-            logger.debug("Async JSON extraction result: %s", result)
-            if isinstance(result, ExtractedAnswer):
-                extracted = str(result.final_answer).strip()
-                logger.debug("Async JSON extracted answer: '%s'", extracted)
-                return extracted
-            logger.warning(
-                "Async JSON extraction did not return expected model type: %s", type(result)
+            result = await self.llm.generate_json_async(
+                prompt,
+                response_model=ExtractedAnswer,
+                max_tokens=self.max_tokens,
+                seed=self.seed,
             )
+            return str(result.final_answer).strip()
         except Exception as e:
             logger.error("Async JSON extraction failed: %s", e, exc_info=True)
-
-        logger.debug("Falling back to heuristic extraction after async JSON failure.")
         return self._extract_answer_heuristic(cot)
 
     def extract_answer(self, cot: str) -> str:
@@ -155,7 +108,6 @@ class SelfConsistency:
 
     def run(self, prompt: str) -> str:
         answers: List[str] = []
-        raw_cots: List[str] = []
         for i in range(self.n_samples):
             try:
                 cot = self.llm.generate(
@@ -163,70 +115,44 @@ class SelfConsistency:
                     temperature=self.temperature,
                     max_tokens=self.max_tokens,
                     stop=self.stop,
+                    seed=self.seed,
                     **self.gen_kwargs,
                 )
-                raw_cots.append(cot)
-                logger.debug("Sample %d Raw CoT:\n---\n%s\n---", i + 1, cot)
                 ans = self.extract_answer(cot)
-                logger.debug("Sample %d Extracted Answer: '%s'", i + 1, ans)
                 if ans:
                     answers.append(ans)
-                else:
-                    logger.debug("Sample %d produced empty answer after extraction.", i + 1)
-            except Exception as e:
-                logger.error("Sample %d generation failed: %s", i + 1, e, exc_info=True)
-
+            except Exception:
+                pass
         if not answers:
-            logger.warning("No valid answers extracted after %d samples.", self.n_samples)
             return ""
-
-        counts = Counter(answers)
-        top_answer, _ = counts.most_common(1)[0]
-        logger.info("SelfConsistency selected '%s' from %s", top_answer, counts)
+        top_answer, _ = Counter(answers).most_common(1)[0]
         return top_answer
 
     async def run_async(self, prompt: str, semaphore: Optional[asyncio.Semaphore] = None) -> str:
-        async def sample(idx: int) -> Optional[Tuple[str, str]]:
+        async def sample(i: int) -> Optional[str]:
+            if semaphore:
+                await semaphore.acquire()
             try:
-                local_kwargs = {
-                    "temperature": self.temperature,
-                    "max_tokens": self.max_tokens,
-                    "stop": self.stop,
+                cot = await self.llm.generate_async(
+                    prompt,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                    stop=self.stop,
+                    seed=self.seed,
                     **self.gen_kwargs,
-                }
-                if semaphore:
-                    async with semaphore:
-                        cot = await self.llm.generate_async(prompt, **local_kwargs)
-                else:
-                    cot = await self.llm.generate_async(prompt, **local_kwargs)
-
-                logger.debug("Async Sample %d Raw CoT:\n---\n%s\n---", idx + 1, cot)
-                ans = await self.extract_answer_async(cot)
-                logger.debug("Async Sample %d Extracted Answer: '%s'", idx + 1, ans)
-                if not ans:
-                    logger.debug("Async sample %d produced empty answer after extraction.", idx + 1)
-                return cot, ans
-            except Exception as e:
-                logger.error("Async sample %d failed: %s", idx + 1, e, exc_info=True)
+                )
+                return await self.extract_answer_async(cot)
+            except Exception:
                 return None
+            finally:
+                if semaphore:
+                    semaphore.release()
 
-        tasks = [sample(i) for i in range(self.n_samples)]
-        results = await asyncio.gather(*tasks)
-
-        answers = []
-        for res in results:
-            if res is not None:
-                _, ans = res
-                if ans is not None and ans.strip():
-                    answers.append(ans)
-
+        results = await asyncio.gather(*(sample(i) for i in range(self.n_samples)))
+        answers = [a for a in results if a]
         if not answers:
-            logger.warning("No valid answers extracted async after %d samples.", self.n_samples)
             return ""
-
-        counts = Counter(answers)
-        top_answer, _ = counts.most_common(1)[0]
-        logger.info("Async SelfConsistency selected '%s' from %s", top_answer, counts)
+        top_answer, _ = Counter(answers).most_common(1)[0]
         return top_answer
 
     def run_stream(self, prompt: str) -> Iterator[str]:

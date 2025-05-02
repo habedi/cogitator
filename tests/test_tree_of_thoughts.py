@@ -1,18 +1,17 @@
+# tests/test_tree_of_thoughts.py
 import pytest
 
 from cogitator.tree_of_thoughts import TreeOfThoughts
-
-
-# Import schemas used by TreeOfThoughts
+# --- FIX: Import schemas ---
+from cogitator.schemas import ThoughtExpansion, EvaluationResult
 
 
 def test_run_returns_final_and_calls_prompts(fake_llm_factory):
-    # Config needs to provide data that fake _generate_json_internal will return as string
-    fake_expansion = {"thoughts": ["step1_sync"]}
-    fake_eval = {"score": 8, "justification": "Okay_sync"}
+    # --- FIX: Use schema objects for config clarity ---
+    fake_expansion = ThoughtExpansion(thoughts=["step1_sync"])
+    fake_eval = EvaluationResult(score=8, justification="Okay_sync")
     llm = fake_llm_factory({
-        # Configure responses based on prompt keywords used by _get_response_for_prompt
-        "json_steps": fake_expansion,
+        "json_steps": fake_expansion, # Matched by prompt content check below
         "json_eval": fake_eval,
         "final_answer": "FINAL_sync"
     })
@@ -23,13 +22,16 @@ def test_run_returns_final_and_calls_prompts(fake_llm_factory):
 
     # Verify internal JSON generation calls were made with correct models
     expand_call = next((c for c in llm.sync_calls if
-                        c["type"] == "_generate_json_internal" and "JSON Steps:" in c["prompt"]),
+                        # --- FIX: Check for updated prompt content ---
+                        c["type"] == "_generate_json_internal" and "JSON Output:" in c["prompt"] and "thoughts" in c["prompt"]),
                        None)
     eval_call = next((c for c in llm.sync_calls if
                       c["type"] == "_generate_json_internal" and "JSON Evaluation:" in c["prompt"]),
                      None)
+    # Check for either final prompt format (direct or with steps)
     final_call = next((c for c in llm.sync_calls if
-                       c["type"] == "generate" and "Given reasoning steps" in c["prompt"]), None)
+                       c["type"] == "generate" and ("Given reasoning steps" in c["prompt"] or c["prompt"].startswith("Answer the question:"))),
+                      None)
 
     assert expand_call is not None, "Expansion call not found"
     assert expand_call["response_model"] == "ThoughtExpansion"
@@ -42,14 +44,13 @@ def test_run_returns_final_and_calls_prompts(fake_llm_factory):
 
 @pytest.mark.asyncio
 async def test_run_async_returns_final_and_calls_prompts(fake_llm_factory):
-    # Config needs to provide data that fake _generate_json_internal_async will return as string
-    fake_expansion_async = {"thoughts": ["step1_async"]}
-    fake_eval_async = {"score": 8, "justification": "Okay_async"}
+    # --- FIX: Use schema objects for config clarity ---
+    fake_expansion_async = ThoughtExpansion(thoughts=["step1_async"])
+    fake_eval_async = EvaluationResult(score=8, justification="Okay_async")
     llm = fake_llm_factory({
-        # Configure responses based on prompt keywords used by _get_response_for_prompt
-        "json_steps": fake_expansion_async,  # Will be picked by keyword match
-        "json_eval": fake_eval_async,  # Will be picked by keyword match
-        "final_answer": "FINAL_async"  # Will be picked by keyword match
+        "json_steps": fake_expansion_async, # Matched by prompt content check below
+        "json_eval": fake_eval_async,
+        "final_answer": "FINAL_async"
     })
     tot = TreeOfThoughts(llm, max_depth=1, num_branches=1, sims=1, c_puct=1.0)
     out = await tot.run_async("test_async?")
@@ -58,13 +59,15 @@ async def test_run_async_returns_final_and_calls_prompts(fake_llm_factory):
 
     # Verify internal async JSON generation calls were made with correct models
     expand_call = next((c for c in llm.async_calls if
-                        c["type"] == "_generate_json_internal_async" and "JSON Steps:" in c[
-                            "prompt"]), None)
+                        # --- FIX: Check for updated prompt content ---
+                        c["type"] == "_generate_json_internal_async" and "JSON Output:" in c["prompt"] and "thoughts" in c["prompt"]),
+                       None)
     eval_call = next((c for c in llm.async_calls if
-                      c["type"] == "_generate_json_internal_async" and "JSON Evaluation:" in c[
-                          "prompt"]), None)
+                      c["type"] == "_generate_json_internal_async" and "JSON Evaluation:" in c["prompt"]),
+                     None)
+    # Check for either final prompt format (direct or with steps)
     final_call = next((c for c in llm.async_calls if
-                       c["type"] == "generate_async" and "Given reasoning steps" in c["prompt"]),
+                       c["type"] == "generate_async" and ("Given reasoning steps" in c["prompt"] or c["prompt"].startswith("Answer the question:"))),
                       None)
 
     assert expand_call is not None, "Async expansion call not found"

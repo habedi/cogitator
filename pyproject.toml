@@ -50,7 +50,7 @@ pythonpath = ["cogitator"]
 testpaths   = ["tests"]
 addopts = [
     "--tb=short",
-    "--disable-warnings",
+    #"--disable-warnings",
     "--cov=cogitator",
     "--cov-branch",
     "--cov-report=term",

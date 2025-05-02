@@ -5,7 +5,6 @@ import logging
 
 from cogitator.cdw_cot import CDWCoT
 from cogitator.model import BaseLLM
-
 from examples.shared import get_llm, run_main, setup_logging
 
 setup_logging()
@@ -13,18 +12,18 @@ logger = logging.getLogger(__name__)
 
 
 def setup_cdw_cot(llm: BaseLLM) -> CDWCoT:
-    return CDWCoT(llm, pool_size=8, n_clusters=2, lr=0.1, temp=0.5, sample_size=3, seed=42)
+    return CDWCoT(llm, pool_size=8, n_clusters=2, lr=0.1, temp=0.5, sample_size=3)
 
 
 TRAIN_QUESTIONS = [
-    "A pot has 5 liters. You add 2 liters. How many liters now?",  # 7
-    "If x+3=7, what is x?",  # 4
-    "There are 4 pens in a box. How many pens in 3 boxes?",  # 12
-    "You walk 2 km in 30 minutes. Distance in 1 hour?",  # 4
-    "5 apples + 3 apples = ?",  # 8
-    "Solve 2y = 10",  # 5
-    "Area of 2x4 rectangle?",  # 8
-    "Cost of 3 items at $5 each?",  # 15
+    "A pot has 5 liters. You add 2 liters. How many liters now?",
+    "If x+3=7, what is x?",
+    "There are 4 pens in a box. How many pens in 3 boxes?",
+    "You walk 2 km in 30 minutes. Distance in 1 hour?",
+    "5 apples + 3 apples = ?",
+    "Solve 2y = 10",
+    "Area of 2x4 rectangle?",
+    "Cost of 3 items at $5 each?",
 ]
 TRAIN_ANSWERS = ["7", "4", "12", "4", "8", "5", "8", "15"]
 
@@ -32,7 +31,7 @@ TEST_QUERIES = ["If you have 3 boxes of 5 pens each, how many pens?", "Solve for
 
 
 async def main_async(args: argparse.Namespace):
-    llm = get_llm(args.provider, args.openai_key, args.ollama_model)
+    llm = get_llm(args.provider, args.model_name, args.openai_key)
     cdw = setup_cdw_cot(llm)
     semaphore = asyncio.Semaphore(5)
 
@@ -51,7 +50,7 @@ async def main_async(args: argparse.Namespace):
 
 
 def main_sync(args: argparse.Namespace):
-    llm = get_llm(args.provider, args.openai_key, args.ollama_model)
+    llm = get_llm(args.provider, args.model_name, args.openai_key)
     cdw = setup_cdw_cot(llm)
 
     logger.info("Initializing CDW-CoT pool synchronously...")

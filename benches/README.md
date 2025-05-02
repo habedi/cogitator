@@ -17,6 +17,8 @@ Available Options:
 * `--openai-key <key>`: OpenAI API key (required for `--provider openai`, can use `OPENAI_API_KEY` env var).
 * `--use-async`: Use asynchronous execution (default: sync).
 * `--concurrency <number>`: Max concurrent requests for async mode (default: `5`).
+* `--use-json`: Use JSON mode for final answer generation/extraction where applicable (affects LeastToMost,
+  GraphOfThoughts, and SelfConsistency internal extraction). Default: False.
 * `--show-details`: Show detailed results (Q, Gold, Pred, Correct, Time) for each question.
 * `--debug`: Enable debug logging for more verbose output.
 
@@ -41,10 +43,11 @@ Use `ollama list` to see the available models for the `ollama` provider.
     # --model-name gpt-4o-mini --dataset csqa --cutoff 100 --use-async --show-details
     ```
 
-* Run using Ollama with `llama3` model, all samples (-1), on `multiarith` dataset, async with higher concurrency:
+* Run using Ollama with `llama3:4b` model, all samples (-1), on `multiarith` dataset, async with higher concurrency, using
+  JSON mode:
     ```bash
-    poetry run python benches/run.py --provider ollama --model-name llama3 --dataset multiarith \
-    --cutoff -1 --use-async --concurrency 10
+    poetry run python benches/run.py --provider ollama --model-name llama3:4b --dataset multiarith \
+    --cutoff -1 --use-async --concurrency 10 --use-json
     ```
 
 * Run sync benchmark on `aqua` (AQUA-RAT) dataset with default Ollama:
@@ -56,14 +59,15 @@ Use `ollama list` to see the available models for the `ollama` provider.
 
 Accuracy is the primary metric used to evaluate the performance of the models on the datasets.
 It is defined as the percentage of correct answers out of the total number of samples (questions) used during the
-evaluation. For numerical answers, the final number is extracted from the model output before comparison.
+evaluation. For numerical answers, the final number is extracted from the model output before comparison (using a
+standard heuristic unless `--use-json` modifies the output structure).
 
 ### Datasets
 
 The following datasets can be used in the benchmarking process:
 
 | Dataset Name | Source Link                                                                          | Category Tags             | Description                                     |
-|--------------|--------------------------------------------------------------------------------------|---------------------------|-------------------------------------------------|
+|:-------------|:-------------------------------------------------------------------------------------|:--------------------------|:------------------------------------------------|
 | `gsm8k`      | [openai/gsm8k](https://huggingface.co/datasets/openai/gsm8k)                         | `math`                    | Grade school math word problems                 |
 | `multiarith` | [ChilleD/MultiArith](https://huggingface.co/datasets/ChilleD/MultiArith)             | `math`                    | Multi-step arithmetic problems                  |
 | `aqua`       | [deepmind/aqua_rat](https://huggingface.co/datasets/deepmind/aqua_rat)               | `math`                    | Algebraic word problems with rationales (MCQ)   |

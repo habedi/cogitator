@@ -5,7 +5,6 @@ import logging
 
 from cogitator.model import BaseLLM
 from cogitator.sc_cot import SelfConsistency
-
 from examples.shared import get_llm, run_main, setup_logging
 
 setup_logging()
@@ -29,7 +28,7 @@ PROMPT = (
 
 
 async def main_async(args: argparse.Namespace):
-    llm = get_llm(args.provider, args.openai_key, args.ollama_model)
+    llm = get_llm(args.provider, args.model_name, args.openai_key)
     sc = setup_sc(llm)
     semaphore = asyncio.Semaphore(5)
 
@@ -40,7 +39,7 @@ async def main_async(args: argparse.Namespace):
 
 
 def main_sync(args: argparse.Namespace):
-    llm = get_llm(args.provider, args.openai_key, args.ollama_model)
+    llm = get_llm(args.provider, args.model_name, args.openai_key)
     sc = setup_sc(llm)
 
     logger.info("Running SelfConsistency synchronously...")

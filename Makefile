@@ -5,7 +5,8 @@ POETRY = poetry
 SHELL = /bin/bash
 BENCH_DIR = benches
 EXAMPLE_DIR = examples
-OLLAMA_MODEL ?= gemma3
+OLLAMA_MODEL ?= gemma3:12b
+OPENAI_MODE ?= gpt-4o-mini
 
 # Default target
 .DEFAULT_GOAL := help
@@ -66,17 +67,17 @@ publish: ## Publish the library to PyPI (requires PYPI_TOKEN to be set)
 check: lint typecheck test ## Run linter checks, typechecking, and tests
 
 .PHONY: example-openai
-example-openai: ## Run the examples using OpenAI (requires OPENAI_API_KEY to be set)
+example-openai: ## Run the examples using OpenAI (needs OPENAI_API_KEY to be set)
 	@for script in $(EXAMPLE_DIR)/run_*.py; do \
-	   echo "Running $$script..."; \
-	   $(POETRY) run python $$script --provider openai --openai-key $(OPENAI_API_KEY); \
+	   echo "Running $$script --provider openai --openai-key ******** --model-name $(OPENAI_MODE) --use-async"; \
+	   $(POETRY) run python $$script --provider openai --openai-key $(OPENAI_API_KEY) --model-name $(OPENAI_MODE) --use-async; \
 	done
 
-example-ollama: ## Run the examples using Ollama (accepts OLLAMA_MODEL as an argument)
+example-ollama: ## Run the examples using Ollama
 	@echo "Running examples with Ollama provider (Model: $(OLLAMA_MODEL))"
 	@for script in $(EXAMPLE_DIR)/run_*.py; do \
-	   echo "Running $$script --provider ollama --ollama-model $(OLLAMA_MODEL)..."; \
-	   $(POETRY) run python $$script --provider ollama --ollama-model $(OLLAMA_MODEL); \
+	   echo "Running $$script --provider ollama --model-name $(OLLAMA_MODEL)"; \
+	   $(POETRY) run python $$script --provider ollama --model-name $(OLLAMA_MODEL); \
 	done
 
 # All-in-one target

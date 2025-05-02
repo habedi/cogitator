@@ -5,7 +5,6 @@ import logging
 
 from cogitator.auto_cot import AutoCoT
 from cogitator.model import BaseLLM
-
 from examples.shared import get_llm, run_main, setup_logging
 
 setup_logging()
@@ -23,7 +22,6 @@ def setup_auto_cot(llm: BaseLLM) -> AutoCoT:
     )
 
 
-# Example question pool
 QUESTIONS_POOL = [
     "A merchant had 10 apples. He sold 3. How many remain?",
     "There are 7 days in a week. How many days in 3 weeks?",
@@ -42,7 +40,7 @@ TEST_QUESTIONS = [
 
 
 async def main_async(args: argparse.Namespace):
-    llm = get_llm(args.provider, args.openai_key, args.ollama_model)
+    llm = get_llm(args.provider, args.model_name, args.openai_key)
     auto = setup_auto_cot(llm)
     semaphore = asyncio.Semaphore(5)
 
@@ -58,7 +56,7 @@ async def main_async(args: argparse.Namespace):
 
 
 def main_sync(args: argparse.Namespace):
-    llm = get_llm(args.provider, args.openai_key, args.ollama_model)
+    llm = get_llm(args.provider, args.model_name, args.openai_key)
     auto = setup_auto_cot(llm)
 
     logger.info("Fitting AutoCoT synchronously...")

@@ -38,7 +38,7 @@ def test_train_and_answer_flow_runs_without_error(fake_llm_factory, patch_embedd
     questions = [f"q{i}{i}" for i in range(10)]  # More data
     answers = [f"a{i}" for i in range(10)]
     llm = fake_llm_factory({"generate_sync": "Train/Answer Sync"})
-    cdw = CDWCoT(llm, pool_size=5, n_clusters=3, sample_size=2, lr=0.1, temp=1.0, seed=42)
+    cdw = CDWCoT(llm, pool_size=5, n_clusters=3, sample_size=2, lr=0.1, temp=1.0)
     cdw.init_pool(questions, answers)
     cdw.train(val_split=0.3, epochs=1, patience=1)
     if not cdw.PC or cdw.cluster_centers is None: pytest.skip("Pool/Clusters empty")
