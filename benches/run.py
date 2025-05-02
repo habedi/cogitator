@@ -22,6 +22,7 @@ from cogitator import (
     OllamaLLM,
     OpenAILLM
 )
+from cogitator.schemas import ExtractedAnswer
 from cogitator.utils import accuracy
 
 logger = logging.getLogger(__name__)
@@ -100,8 +101,9 @@ class Datasets:
         ds = load_dataset("deepmind/aqua_rat", split="test", trust_remote_code=True)
         questions = ds["question"]
         options_list = ds["options"]
-        questions_with_options = [q + ": " + " ".join(opts) for q, opts in
-                                  zip(questions, options_list)]
+        questions_with_options = [q + "\n" +
+                                  "It's a multiple choice question. Pick the correct label (character before ')')\n" +
+                                  " ".join(opts) for q, opts in zip(questions, options_list)]
         return questions_with_options, ds["correct"]
 
     @staticmethod
@@ -184,49 +186,26 @@ def get_llm(provider: str, model_name: str, openai_key: Optional[str] = None) ->
 
 def extract_final_answer(raw_output: str) -> str:
     text = str(raw_output).strip()
-    if not text or text == "[ERROR]":
+    if not text or text == "[ERROR]" or text.startswith("[ERROR:"):
         return "[ERROR]"
 
-    mcq_patterns = [
-        r'(?:answer|choice|option) is\s+([A-Ea-e])\b\.?$',
-        r'final answer\s*:\s*([A-Ea-e])\b\.?$',
-        r'\(([A-Ea-e])\)$',
-        r'correct option is\s+([A-Ea-e])\b',
-        r'\b([A-Ea-e])\s*is the correct answer',
-    ]
     lines = text.strip().splitlines()
-    if lines:
-        last_line = lines[-1].strip()
-        for pattern in mcq_patterns:
-            match = re.search(pattern, last_line, re.IGNORECASE)
-            if match:
-                ans = match.group(1).upper()
-                logger.debug(
-                    f"Extracted MCQ answer '{ans}' from last line using pattern: '{pattern}'")
-                return ans
-        if re.fullmatch(r'[A-Ea-e]', last_line):
-            ans = last_line.upper()
-            logger.debug(f"Extracted MCQ answer '{ans}' as last line content.")
-            return ans
+    last_line = lines[-1].strip() if lines else ""
 
-    for pattern in mcq_patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            ans = match.group(1).upper()
-            logger.debug(f"Extracted MCQ answer '{ans}' from full text using pattern: '{pattern}'")
-            return ans
+    # --- Prioritize Last Line Extraction ---
 
+    # 1. Check for specific final answer markers + value on the last line
+    # Numerical with markers (e.g., "Final Answer: 123", "is 42.", boxed)
     num_pattern = r'[+-]?\d+(?:,\d+)*(?:\.\d+)?'
-    numerical_patterns = [
-        r'(?:final answer is|the final answer is|final answer:|answer:|the answer is)\s*(' + num_pattern + r')\b',
-        r'\\boxed\{(' + num_pattern + r')\}',
-        r'(?:is|equals|result is|=)\s*(' + num_pattern + r')\s*\.?\s*$',
+    final_num_patterns = [
+        r'(?:final answer is|the final answer is|final answer:|answer:|result is|value is|equals|=)\s*(' + num_pattern + r')\b\.?$',
+        r'\\boxed\{(' + num_pattern + r')\}'
     ]
-    for pattern in numerical_patterns:
-        match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
+    for pattern in final_num_patterns:
+        match = re.search(pattern, last_line, re.IGNORECASE)
         if match:
             extracted_num = match.group(1).replace(",", "")
-            logger.debug(f"Extracted numerical answer '{extracted_num}' using pattern: '{pattern}'")
+            logger.debug(f"Extracted numerical answer '{extracted_num}' from last line marker.")
             try:
                 f_val = float(extracted_num)
                 if f_val.is_integer(): return str(int(f_val))
@@ -234,32 +213,94 @@ def extract_final_answer(raw_output: str) -> str:
                 pass
             return extracted_num
 
+    # MCQ with markers (e.g., "Answer: A", "Choice B.", "(C)")
+    final_mcq_patterns = [
+        r'(?:answer|choice|option) is\s+([A-Ea-e])\b\.?$',
+        r'final answer\s*:\s*([A-Ea-e])\b\.?$',
+        r'correct option is\s+([A-Ea-e])\b'
+    ]
+    for pattern in final_mcq_patterns:
+        match = re.search(pattern, last_line, re.IGNORECASE)
+        if match:
+            ans = match.group(1).upper()
+            logger.debug(f"Extracted MCQ answer '{ans}' from last line marker.")
+            return ans
+
+    # Yes/No with markers (e.g., "Answer: Yes", "Result is No.")
+    final_yes_no_patterns = [
+        r'(?:answer|result) is\s+(yes|no)\b\.?$'
+    ]
+    for pattern in final_yes_no_patterns:
+        match = re.search(pattern, last_line, re.IGNORECASE)
+        if match:
+            ans = match.group(1).lower()
+            logger.debug(f"Extracted Yes/No answer '{ans}' from last line marker.")
+            return ans
+
+    # 2. Check if last line IS the answer (standalone number, letter, yes/no)
+    # Standalone Number (potentially with $ or .)
+    if re.fullmatch(r'\$?' + num_pattern + r'\.?\s*', last_line):
+        extracted_num = re.sub(r'[$.]', '', last_line).replace(",", "")  # Clean up
+        logger.debug(f"Extracted numerical answer '{extracted_num}' as standalone last line.")
+        try:  # Try to clean float
+            f_val = float(extracted_num)
+            if f_val.is_integer(): return str(int(f_val))
+        except ValueError:
+            pass
+        return extracted_num
+
+    # Standalone MCQ Letter (allow surrounding parentheses/punctuation)
+    if re.fullmatch(r'\(?([A-Ea-e])\)?\.?\s*', last_line):
+        match = re.fullmatch(r'\(?([A-Ea-e])\)?\.?\s*', last_line)
+        ans = match.group(1).upper()
+        logger.debug(f"Extracted MCQ answer '{ans}' as standalone last line.")
+        return ans
+
+    # Standalone Yes/No (allow punctuation)
+    if re.fullmatch(r'(yes|no)\.?\s*', last_line, re.IGNORECASE):
+        ans = last_line.lower().rstrip('.').strip()
+        logger.debug(f"Extracted Yes/No answer '{ans}' as standalone last line.")
+        return ans
+
+    # --- Fallback to Searching Full Text (if not found on last line) ---
+
+    # Search for MCQ patterns anywhere (less reliable)
+    mcq_patterns_full = [
+        r'(?:answer|choice|option) is\s+([A-Ea-e])\b',
+        r'final answer\s*:\s*([A-Ea-e])\b',
+        r'correct option is\s+([A-Ea-e])\b',
+        r'\b([A-Ea-e])\s*is the correct answer',
+        r'the correct letter is\s*([A-Ea-e])\b',
+    ]
+    for pattern in mcq_patterns_full:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            ans = match.group(1).upper()
+            logger.debug(f"Extracted MCQ answer '{ans}' from full text search.")
+            return ans
+
+    # Search for numerical patterns anywhere (less reliable)
+    numerical_patterns_full = [
+        r'(?:final answer is|the final answer is|final answer:|answer:|result is|value is|equals|=)\s*(' + num_pattern + r')\b',
+        r'\\boxed\{(' + num_pattern + r')\}'
+    ]
+    for pattern in numerical_patterns_full:
+        match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
+        if match:
+            extracted_num = match.group(1).replace(",", "")
+            logger.debug(f"Extracted numerical answer '{extracted_num}' from full text search.")
+            try:
+                f_val = float(extracted_num)
+                if f_val.is_integer(): return str(int(f_val))
+            except ValueError:
+                pass
+            return extracted_num
+
+    # Find last number in the text as a fallback (least reliable)
     numbers = re.findall(num_pattern, text)
     if numbers:
         last_num_str = numbers[-1].replace(",", "")
-        if lines:
-            last_line = lines[-1].strip()
-            if re.fullmatch(r'.*?(' + re.escape(last_num_str) + r')\s*\.?\s*', last_line,
-                            re.IGNORECASE):
-                logger.debug(
-                    f"Extracted numerical answer '{last_num_str}' from last line direct match.")
-                try:
-                    f_val = float(last_num_str)
-                    if f_val.is_integer(): return str(int(f_val))
-                except ValueError:
-                    pass
-                return last_num_str
-            if re.search(r'\b(?:is|answer|equals)\s+(' + re.escape(last_num_str) + r')\s*\.?\s*$',
-                         last_line, re.IGNORECASE):
-                logger.debug(
-                    f"Extracted numerical answer '{last_num_str}' from last line phrasing.")
-                try:
-                    f_val = float(last_num_str)
-                    if f_val.is_integer(): return str(int(f_val))
-                except ValueError:
-                    pass
-                return last_num_str
-        logger.debug(f"Extracted numerical answer '{last_num_str}' as last number found.")
+        logger.debug(f"Extracted numerical answer '{last_num_str}' as last number found in text.")
         try:
             f_val = float(last_num_str)
             if f_val.is_integer(): return str(int(f_val))
@@ -267,21 +308,128 @@ def extract_final_answer(raw_output: str) -> str:
             pass
         return last_num_str
 
-    yes_no_match = re.search(r'\b(?:answer|result) is\s+(yes|no)\b\.?', text, re.IGNORECASE)
-    if yes_no_match:
-        ans = yes_no_match.group(1).lower()
-        logger.debug(f"Extracted yes/no answer '{ans}'")
-        return ans
+    # Search for Yes/No patterns anywhere
+    yes_no_patterns_full = [
+        r'(?:answer|result) is\s+(yes|no)\b'
+    ]
+    for pattern in yes_no_patterns_full:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            ans = match.group(1).lower()
+            logger.debug(f"Extracted Yes/No answer '{ans}' from full text search.")
+            return ans
 
-    if lines:
-        last_line_content = lines[-1].strip()
-        if last_line_content:
-            logger.debug(f"Falling back to last line content: '{last_line_content}'")
-            return last_line_content
+    # Final fallback: use last line only if it's short, otherwise return error
+    if lines and len(last_line) < 20:  # Heuristic length check
+        logger.debug(f"Falling back to short last line content: '{last_line}'")
+        return last_line
 
     logger.warning(
-        f"Could not extract a definitive answer from: '{text[:150]}...' Returning original.")
-    return text
+        f"Could not extract a definitive answer heuristically from: '{text[:150]}...' Returning error.")
+    return "[EXTRACTION_HEURISTIC_FAILURE]"
+
+
+EXTRACTION_PROMPT_TEMPLATE = """
+Original Question:
+{question}
+
+LLM Reasoning and Output:
+\"\"\"
+{raw_output}
+\"\"\"
+
+Analyze the LLM Reasoning and Output based on the Original Question. Extract only the definitive final answer stated in the text.
+Return the result as a JSON object with a single key "final_answer" containing the final answer as a string.
+If no clear final answer is stated, return null for the value.
+Avoid re-interpreting or re-solving the problem. Focus solely on extracting the answer provided in the text.
+
+JSON Output:
+"""
+
+
+def extract_final_answer_by_llm(
+    raw_output: str, llm: BaseLLM, question: str, **kwargs
+) -> str:
+    if not raw_output or raw_output == "[ERROR]" or raw_output.startswith("[ERROR:"):
+        logger.warning("Skipping LLM extraction for input marked as error.")
+        return "[ERROR]"
+
+    prompt = EXTRACTION_PROMPT_TEMPLATE.format(
+        question=question, raw_output=raw_output
+    )
+    logger.debug("Attempting LLM extraction with prompt:\n%s", prompt)
+
+    try:
+        local_kwargs = kwargs.copy()
+        extraction_llm_args = {
+            "temperature": local_kwargs.pop("temperature", 0.1),
+            "max_tokens": local_kwargs.pop("max_tokens", 64),
+            "seed": local_kwargs.pop("seed", RANDOM_SEED),
+            **local_kwargs
+        }
+        result = llm.generate_json(
+            prompt,
+            response_model=ExtractedAnswer,
+            **extraction_llm_args
+        )
+        if result and result.final_answer is not None:
+            extracted = str(result.final_answer).strip()
+            logger.debug(f"LLM extraction successful: '{extracted}'")
+            if re.fullmatch(r'[A-Ea-e]', extracted):
+                return extracted.upper()
+            return extracted
+        else:
+            logger.warning(
+                f"LLM extraction returned null or invalid object for output: {raw_output[:100]}...")
+            return "[EXTRACTION_NULL]"
+    except Exception as e:
+        logger.error(f"LLM extraction failed: {e}", exc_info=True)
+        return "[EXTRACTION_ERROR]"
+
+
+async def extract_final_answer_by_llm_async(
+    raw_output: str, llm: BaseLLM, question: str, **kwargs
+) -> str:
+    if not raw_output or raw_output == "[ERROR]" or raw_output.startswith("[ERROR:"):
+        logger.warning("Skipping async LLM extraction for input marked as error.")
+        return "[ERROR]"
+
+    prompt = EXTRACTION_PROMPT_TEMPLATE.format(
+        question=question, raw_output=raw_output
+    )
+    logger.debug("Attempting async LLM extraction with prompt:\n%s", prompt)
+
+    try:
+        local_kwargs = kwargs.copy()
+        extraction_llm_args = {
+            "response_model": ExtractedAnswer,
+            "temperature": local_kwargs.pop("temperature", 0.1),
+            "max_tokens": local_kwargs.pop("max_tokens", 64),
+            "seed": local_kwargs.pop("seed", RANDOM_SEED),
+            **local_kwargs
+        }
+
+        semaphore = local_kwargs.pop("semaphore", None)
+
+        if semaphore:
+            async with semaphore:
+                result = await llm.generate_json_async(prompt, **extraction_llm_args)
+        else:
+            result = await llm.generate_json_async(prompt, **extraction_llm_args)
+
+        if result and result.final_answer is not None:
+            extracted = str(result.final_answer).strip()
+            logger.debug(f"Async LLM extraction successful: '{extracted}'")
+            if re.fullmatch(r'[A-Ea-e]', extracted):
+                return extracted.upper()
+            return extracted
+        else:
+            logger.warning(
+                f"Async LLM extraction returned null or invalid object for output: {raw_output[:100]}...")
+            return "[EXTRACTION_NULL]"
+    except Exception as e:
+        logger.error(f"Async LLM extraction failed: {e}", exc_info=True)
+        return "[EXTRACTION_ERROR]"
 
 
 def log_single_result(
@@ -314,6 +462,8 @@ def run_benchmark(
     questions: List[str],
     golds: List[str],
     show_details: bool,
+    args: argparse.Namespace,
+    llm: BaseLLM
 ) -> dict[str, str | float | int] | None:
     logger.info(f"Running benchmark for method: {name} (sync)")
     extracted_preds: List[str] = []
@@ -326,7 +476,10 @@ def run_benchmark(
         is_correct = False
         try:
             raw_out = model_func(q)
-            extracted_out = extract_final_answer(raw_out)
+            if args.extract_by_llm:
+                extracted_out = extract_final_answer_by_llm(raw_out, llm, q)
+            else:
+                extracted_out = extract_final_answer(raw_out)
             is_correct = accuracy([extracted_out], [gold_answer]) > 0
         except Exception as e:
             logger.error(f"Error running {name} on question {i}: {e}", exc_info=True)
@@ -358,6 +511,8 @@ async def run_benchmark_async(
     golds: List[str],
     semaphore: asyncio.Semaphore,
     show_details: bool,
+    args: argparse.Namespace,
+    llm: BaseLLM
 ) -> Dict[str, Any]:
     logger.info(f"Running benchmark for method: {name} (async)")
     results_data: List[Dict[str, Any]] = [{"raw": "[ERROR]", "extracted": "[ERROR]", "time": 0.0}
@@ -367,31 +522,39 @@ async def run_benchmark_async(
         t0 = time.time()
         raw_output = "[ERROR]"
         extracted_output = "[ERROR]"
+        is_correct = False
+        time_taken = 0.0
         try:
             async with semaphore:
                 raw_output = await model_func(q)
+            if args.extract_by_llm:
+                extracted_output = await extract_final_answer_by_llm_async(raw_output, llm, q,
+                                                                           semaphore=semaphore)
+            else:
+                extracted_output = extract_final_answer(raw_output)
+            is_correct = accuracy([extracted_output], [golds[idx]]) > 0
         except Exception as e:
             logger.error(f"Error running {name} on async question {idx}: {e}", exc_info=True)
             if isinstance(raw_output, str) and raw_output != "[ERROR]":
                 raw_output = f"[ERROR: {type(e).__name__}]"
             elif raw_output is None:
                 raw_output = f"[ERROR: {type(e).__name__}]"
+            extracted_output = "[ERROR]"
+            is_correct = False
         finally:
-            extracted_output = extract_final_answer(raw_output)
             time_taken = time.time() - t0
             results_data[idx] = {"raw": str(raw_output) if raw_output is not None else "[ERROR]",
                                  "extracted": str(
                                      extracted_output) if extracted_output is not None else "[ERROR]",
                                  "time": float(time_taken) if time_taken is not None else 0.0}
+            log_single_result(show_details, idx, name, "Async", q, golds[idx],
+                              results_data[idx]["raw"],
+                              results_data[idx]["extracted"], time_taken, is_correct)
 
     tasks = [run_single(i, q) for i, q in enumerate(questions)]
     await asyncio.gather(*tasks)
     extracted_preds = [res["extracted"] for res in results_data]
     times = [res["time"] for res in results_data]
-    for i, q in enumerate(questions):
-        is_correct = accuracy([extracted_preds[i]], [golds[i]]) > 0
-        log_single_result(show_details, i, name, "Async", q, golds[i], results_data[i]["raw"],
-                          extracted_preds[i], times[i], is_correct)
     if not times:
         logger.warning(f"No successful runs recorded for {name} (async).")
         return {"method": name, "accuracy": 0.0, "avg_time_s": 0.0, "num_queries": len(questions),
@@ -425,10 +588,12 @@ def parse_args():
     parser.add_argument("--openai-key", default=None,
                         help="OpenAI API key (reads OPENAI_API_KEY env var if not set)")
     parser.add_argument("--use-async", action="store_true", help="Run benchmarks asynchronously")
-    parser.add_argument("--concurrency", type=int, default=5,
-                        help="Max concurrent requests for async mode (default: 5)")
+    parser.add_argument("--concurrency", type=int, default=3,
+                        help="Max concurrent requests for async mode (default: 3)")
     parser.add_argument("--use-json", action="store_true",
                         help="Use JSON format/parsing where applicable (LtM intermediates/final, GoT final, SC internal).")
+    parser.add_argument("--extract-by-llm", action="store_true",
+                        help="Use LLM call for final answer extraction instead of regex/heuristic.")
     parser.add_argument("--show-details", action="store_true",
                         help="Show detailed results (Q, Gold, Pred, Correct, Time) for each question during the run.")
     parser.add_argument("--debug", action="store_true",
@@ -599,10 +764,19 @@ async def main():
         try:
             if args.use_async:
                 result = await run_benchmark_async(name, model_func, questions, golds, semaphore,
-                                                   args.show_details)
+                                                   args.show_details, args=args, llm=llm)
             else:
-                result = run_benchmark(name, model_func, questions, golds, args.show_details)
-            results.append(result)
+                result = run_benchmark(name, model_func, questions, golds, args.show_details,
+                                       args=args, llm=llm)
+
+            if result is not None:
+                results.append(result)
+            else:
+                if not args.use_async:
+                    results.append({"method": name, "accuracy": 0.0, "avg_time_s": 0.0,
+                                    "num_queries": len(questions), "successful_runs": 0,
+                                    "error": "Sync benchmark function error"})
+
         except Exception as e:
             logger.error(f"Benchmark failed during execution for {name}: {e}", exc_info=True)
             results.append(
