@@ -43,7 +43,8 @@ Use `ollama list` to see the available models for the `ollama` provider.
     # --model-name gpt-4o-mini --dataset csqa --cutoff 100 --use-async --show-details
     ```
 
-* Run using Ollama with `llama3:4b` model, all samples (-1), on `multiarith` dataset, async with higher concurrency, using
+* Run using Ollama with `llama3:4b` model, all samples (-1), on `multiarith` dataset, async with higher concurrency,
+  using
   JSON mode:
     ```bash
     poetry run python benches/run.py --provider ollama --model-name llama3:4b --dataset multiarith \

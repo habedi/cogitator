@@ -47,7 +47,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 pythonpath = ["cogitator"]
-testpaths   = ["tests"]
+testpaths = ["tests"]
 addopts = [
     "--tb=short",
     #"--disable-warnings",

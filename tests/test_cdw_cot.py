@@ -1,6 +1,6 @@
 import pytest
 
-from cogitator.cdw_cot import CDWCoT
+from cogitator import CDWCoT
 
 
 def test_init_pool_builds_candidate_pool(fake_llm_factory, patch_embedding_clustering):
@@ -34,30 +34,32 @@ async def test_init_pool_async_builds_candidate_pool(fake_llm_factory, patch_emb
             assert pytest.approx(1.0) == p.sum()
 
 
-def test_train_and_answer_flow_runs_without_error(fake_llm_factory, patch_embedding_clustering):
-    questions = [f"q{i}{i}" for i in range(10)]  # More data
+def test_train_and_run_flow_runs_without_error(fake_llm_factory, patch_embedding_clustering):
+    questions = [f"q{i}{i}" for i in range(10)]
     answers = [f"a{i}" for i in range(10)]
-    llm = fake_llm_factory({"generate_sync": "Train/Answer Sync"})
-    cdw = CDWCoT(llm, pool_size=5, n_clusters=3, sample_size=2, lr=0.1, temp=1.0)
+    llm = fake_llm_factory({"generate_sync": "Train/Run Sync"})
+    # Removed temp=1.0
+    cdw = CDWCoT(llm, pool_size=5, n_clusters=3, sample_size=2, lr=0.1)
     cdw.init_pool(questions, answers)
     cdw.train(val_split=0.3, epochs=1, patience=1)
     if not cdw.PC or cdw.cluster_centers is None: pytest.skip("Pool/Clusters empty")
-    out = cdw.answer("some sync test")
-    assert out == "Train/Answer Sync"
+    out = cdw.run("some sync test")  # Changed from answer to run
+    assert out == "Train/Run Sync"
     assert "some sync test" in llm.sync_calls[-1]["prompt"]
 
 
 @pytest.mark.asyncio
-async def test_train_async_and_answer_async_flow(fake_llm_factory, patch_embedding_clustering):
+async def test_train_async_and_run_async_flow(fake_llm_factory, patch_embedding_clustering):
     questions = [f"q{i}{i}" for i in range(10)]
     answers = [f"a{i}" for i in range(10)]
-    llm = fake_llm_factory({"generate_async": "Train/Answer Async"})
-    cdw = CDWCoT(llm, pool_size=5, n_clusters=3, sample_size=2, lr=0.1, temp=1.0, seed=42)
+    llm = fake_llm_factory({"generate_async": "Train/Run Async"})
+    # Removed temp=1.0
+    cdw = CDWCoT(llm, pool_size=5, n_clusters=3, sample_size=2, lr=0.1, seed=42)
     await cdw.init_pool_async(questions, answers)
     await cdw.train_async(val_split=0.3, epochs=1, patience=1)
     if not cdw.PC or cdw.cluster_centers is None: pytest.skip("Pool/Clusters empty")
-    out = await cdw.answer_async("some async test")
-    assert out == "Train/Answer Async"
+    out = await cdw.run_async("some async test")  # Changed from answer_async to run_async
+    assert out == "Train/Run Async"
     assert "some async test" in llm.async_calls[-1]["prompt"]
 
 

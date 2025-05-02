@@ -3,8 +3,8 @@ import argparse
 import asyncio
 import logging
 
-from cogitator.model import BaseLLM
-from cogitator.sc_cot import SelfConsistency
+from cogitator import BaseLLM
+from cogitator import SelfConsistency
 from examples.shared import get_llm, run_main, setup_logging
 
 setup_logging()
@@ -18,7 +18,7 @@ def setup_sc(llm: BaseLLM) -> SelfConsistency:
         temperature=0.7,
         max_tokens=100,
         stop=["\n\n"],
-        use_json_parsing=True,
+        internal_extraction_format="json",
     )
 
 

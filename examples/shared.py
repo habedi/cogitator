@@ -1,11 +1,10 @@
-# examples/shared.py
 import argparse
 import asyncio
 import logging
 import os
 from typing import Any, Callable, Coroutine, Optional
 
-from cogitator.model import BaseLLM, OllamaLLM, OpenAILLM
+from cogitator import BaseLLM, OllamaLLM, OpenAILLM
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +72,6 @@ def run_main(
     description: str,
 ):
     args = parse_common_args(description)
-    setup_logging()
 
     if args.use_async:
         asyncio.run(main_async_func(args))

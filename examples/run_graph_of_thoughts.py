@@ -3,8 +3,8 @@ import argparse
 import asyncio
 import logging
 
-from cogitator.graph_of_thoughts import GraphOfThoughts
-from cogitator.model import BaseLLM
+from cogitator import GraphOfThoughts
+from cogitator import BaseLLM
 from examples.shared import get_llm, run_main, setup_logging
 
 setup_logging()
@@ -13,7 +13,12 @@ logger = logging.getLogger(__name__)
 
 def setup_got(llm: BaseLLM) -> GraphOfThoughts:
     return GraphOfThoughts(
-        llm, max_iters=2, num_branches=2, beam_width=2, use_json=True, merge_threshold=0.9
+        llm,
+        max_iters=2,
+        num_branches=2,
+        beam_width=2,
+        final_answer_format="json",
+        merge_threshold=0.9,
     )
 
 

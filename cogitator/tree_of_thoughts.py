@@ -57,7 +57,7 @@ class TreeOfThoughts:
             "JSON Evaluation:"
         ),
         *,
-        max_tokens: int = 256,
+        max_tokens: Optional[int] = 256,
         seed: Optional[int] = None,
     ):
         self.llm = llm
@@ -67,8 +67,6 @@ class TreeOfThoughts:
         self.c_puct = c_puct
         self.expand_prompt = expand_prompt
         self.eval_prompt = eval_prompt
-
-        # NEW:
         self.max_tokens = max_tokens
         self.seed = seed
 
@@ -87,15 +85,17 @@ class TreeOfThoughts:
             node = node.children[best_idx]
         return node
 
-    def _expand(self, node: _Node, question: str) -> None:
+    def _expand(self, node: _Node, question: str, **kwargs) -> None:
         ctx = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(node.steps))
         prompt = self.expand_prompt.format(k=self.num_branches, ctx=ctx, question=question)
         try:
+            local_kwargs = kwargs.copy()
             generated = self.llm.generate_json(
                 prompt,
                 response_model=ThoughtExpansion,
-                max_tokens=self.max_tokens,
-                seed=self.seed,
+                max_tokens=local_kwargs.pop("max_tokens", self.max_tokens),
+                seed=local_kwargs.pop("seed", self.seed),
+                **local_kwargs,
             )
             if not isinstance(generated, ThoughtExpansion):
                 logger.warning("Expansion did not return ThoughtExpansion: %s", type(generated))
@@ -111,26 +111,24 @@ class TreeOfThoughts:
             node.children.append(child)
 
     async def _expand_async(
-        self, node: _Node, question: str, semaphore: Optional[asyncio.Semaphore]
+        self, node: _Node, question: str, semaphore: Optional[asyncio.Semaphore], **kwargs
     ) -> None:
         ctx = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(node.steps))
         prompt = self.expand_prompt.format(k=self.num_branches, ctx=ctx, question=question)
         try:
+            local_kwargs = kwargs.copy()
+            gen_args = {
+                "response_model": ThoughtExpansion,
+                "max_tokens": local_kwargs.pop("max_tokens", self.max_tokens),
+                "seed": local_kwargs.pop("seed", self.seed),
+                **local_kwargs,
+            }
             if semaphore:
                 async with semaphore:
-                    generated = await self.llm.generate_json_async(
-                        prompt,
-                        response_model=ThoughtExpansion,
-                        max_tokens=self.max_tokens,
-                        seed=self.seed,
-                    )
+                    generated = await self.llm.generate_json_async(prompt, **gen_args)
             else:
-                generated = await self.llm.generate_json_async(
-                    prompt,
-                    response_model=ThoughtExpansion,
-                    max_tokens=self.max_tokens,
-                    seed=self.seed,
-                )
+                generated = await self.llm.generate_json_async(prompt, **gen_args)
+
             if not isinstance(generated, ThoughtExpansion):
                 logger.warning(
                     "Async expansion did not return ThoughtExpansion: %s", type(generated)
@@ -146,15 +144,17 @@ class TreeOfThoughts:
             child = TreeOfThoughts._Node(node.steps + [thought], parent=node, prior=prior)
             node.children.append(child)
 
-    def _evaluate(self, node: _Node, question: str) -> float:
+    def _evaluate(self, node: _Node, question: str, **kwargs) -> float:
         steps_str = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(node.steps))
         prompt = self.eval_prompt.format(question=question, steps=steps_str)
         try:
+            local_kwargs = kwargs.copy()
             result = self.llm.generate_json(
                 prompt,
                 response_model=EvaluationResult,
-                max_tokens=self.max_tokens,
-                seed=self.seed,
+                max_tokens=local_kwargs.pop("max_tokens", self.max_tokens),
+                seed=local_kwargs.pop("seed", self.seed),
+                **local_kwargs,
             )
             if isinstance(result, EvaluationResult):
                 raw = float(result.score)
@@ -164,26 +164,24 @@ class TreeOfThoughts:
         return 0.0
 
     async def _evaluate_async(
-        self, node: _Node, question: str, semaphore: Optional[asyncio.Semaphore]
+        self, node: _Node, question: str, semaphore: Optional[asyncio.Semaphore], **kwargs
     ) -> float:
         steps_str = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(node.steps))
         prompt = self.eval_prompt.format(question=question, steps=steps_str)
         try:
+            local_kwargs = kwargs.copy()
+            gen_args = {
+                "response_model": EvaluationResult,
+                "max_tokens": local_kwargs.pop("max_tokens", self.max_tokens),
+                "seed": local_kwargs.pop("seed", self.seed),
+                **local_kwargs,
+            }
             if semaphore:
                 async with semaphore:
-                    result = await self.llm.generate_json_async(
-                        prompt,
-                        response_model=EvaluationResult,
-                        max_tokens=self.max_tokens,
-                        seed=self.seed,
-                    )
+                    result = await self.llm.generate_json_async(prompt, **gen_args)
             else:
-                result = await self.llm.generate_json_async(
-                    prompt,
-                    response_model=EvaluationResult,
-                    max_tokens=self.max_tokens,
-                    seed=self.seed,
-                )
+                result = await self.llm.generate_json_async(prompt, **gen_args)
+
             if isinstance(result, EvaluationResult):
                 raw = float(result.score)
                 return max(0.0, min(1.0, (raw - 1.0) / 9.0))
@@ -198,7 +196,7 @@ class TreeOfThoughts:
             cur.value_sum += value
             cur = cur.parent
 
-    def run(self, question: str) -> str:
+    def run(self, question: str, **kwargs) -> str:
         root = TreeOfThoughts._Node(steps=[], parent=None, prior=1.0)
 
         for sim in range(self.sims):
@@ -207,11 +205,11 @@ class TreeOfThoughts:
 
             to_eval = leaf
             if len(leaf.steps) < self.max_depth:
-                self._expand(leaf, question)
+                self._expand(leaf, question, **kwargs)
                 if leaf.children:
                     to_eval = leaf.children[0]
 
-            value = self._evaluate(to_eval, question)
+            value = self._evaluate(to_eval, question, **kwargs)
             self._backpropagate(to_eval, value)
 
         if not root.children:
@@ -226,16 +224,20 @@ class TreeOfThoughts:
             final_prompt = f"Given reasoning steps:\n{ctx}\n\nAnswer the question: {question}"
 
         try:
+            local_kwargs = kwargs.copy()
             return self.llm.generate(
                 final_prompt,
-                max_tokens=self.max_tokens,
-                seed=self.seed,
+                max_tokens=local_kwargs.pop("max_tokens", self.max_tokens),
+                seed=local_kwargs.pop("seed", self.seed),
+                **local_kwargs,
             ).strip()
         except Exception as e:
             logger.error("Final answer generation failed: %s", e, exc_info=True)
             return "Error generating final answer."
 
-    async def run_async(self, question: str, semaphore: Optional[asyncio.Semaphore] = None) -> str:
+    async def run_async(
+        self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs
+    ) -> str:
         root = TreeOfThoughts._Node(steps=[], parent=None, prior=1.0)
 
         for sim in range(self.sims):
@@ -244,11 +246,11 @@ class TreeOfThoughts:
 
             eval_node = leaf
             if len(leaf.steps) < self.max_depth:
-                await self._expand_async(leaf, question, semaphore)
+                await self._expand_async(leaf, question, semaphore, **kwargs)
                 if leaf.children:
                     eval_node = leaf.children[0]
 
-            value = await self._evaluate_async(eval_node, question, semaphore)
+            value = await self._evaluate_async(eval_node, question, semaphore, **kwargs)
             self._backpropagate(eval_node, value)
 
         if not root.children:
@@ -263,25 +265,17 @@ class TreeOfThoughts:
             final_prompt = f"Given reasoning steps:\n{ctx}\n\nAnswer the question: {question}"
 
         try:
+            local_kwargs = kwargs.copy()
+            gen_args = {
+                "max_tokens": local_kwargs.pop("max_tokens", self.max_tokens),
+                "seed": local_kwargs.pop("seed", self.seed),
+                **local_kwargs,
+            }
             if semaphore:
                 async with semaphore:
-                    return (
-                        await self.llm.generate_async(
-                            final_prompt,
-                            max_tokens=self.max_tokens,
-                            seed=self.seed,
-                        )
-                    ).strip()
+                    return (await self.llm.generate_async(final_prompt, **gen_args)).strip()
             else:
-                return (
-                    await self.llm.generate_async(
-                        final_prompt,
-                        max_tokens=self.max_tokens,
-                        seed=self.seed,
-                    )
-                ).strip()
+                return (await self.llm.generate_async(final_prompt, **gen_args)).strip()
         except Exception as e:
             logger.error("Final async answer generation failed: %s", e, exc_info=True)
             return "Error generating final async answer."
-
-    __call__ = run

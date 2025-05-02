@@ -38,7 +38,7 @@ class AutoCoT:
             raise ValueError(f"Need >= {self.n_demos} questions, got {len(questions)}")
 
         embs = np.stack(encode(questions))
-        labels, centers = cluster_embeddings(embs, self.n_demos, random_state=self.rand_seed or 0)
+        labels, centers = cluster_embeddings(embs, self.n_demos, random_seed=self.rand_seed or 0)
 
         candidate_demos: List[Tuple[int, str]] = []
         for c in range(self.n_demos):
@@ -93,7 +93,7 @@ class AutoCoT:
             raise ValueError(f"Need >= {self.n_demos} questions, got {len(questions)}")
 
         embs = np.stack(encode(questions))
-        labels, centers = cluster_embeddings(embs, self.n_demos, random_state=self.rand_seed or 0)
+        labels, centers = cluster_embeddings(embs, self.n_demos, random_seed=self.rand_seed or 0)
 
         candidate_demos_info: List[Tuple[int, str]] = []
         for c in range(self.n_demos):
@@ -145,7 +145,7 @@ class AutoCoT:
             if isinstance(res, Exception):
                 logger.error("Async demo generation failed: %s", res, exc_info=False)
                 continue
-            idx, q, cot = res  # type: ignore
+            idx, q, cot = res
             if cot is not None and count_steps(cot) <= self.max_steps:
                 demos.append(f"Q: {q}\nA: {cot}")
 
@@ -160,28 +160,28 @@ class AutoCoT:
 
         self.demos = demos
 
-    def answer(self, test_q: str) -> str:
+    def run(self, test_q: str, **kwargs) -> str:
         if self.demos is None:
-            raise RuntimeError("Call fit(...) or fit_async(...) before answer(...)")
+            raise RuntimeError("Call fit() or fit_async() before run()")
         context = "\n\n".join(self.demos)
         payload = f"{context}\n\nQ: {test_q}\nA: {self.prompt_template}"
         logger.debug("AutoCoT payload:\n%s", payload)
         return self.llm.generate(
             payload,
-            max_tokens=self.max_tokens,
-            seed=self.rand_seed,
+            max_tokens=kwargs.pop("max_tokens", self.max_tokens),
+            seed=kwargs.pop("seed", self.rand_seed),
+            **kwargs,
         )
 
-    async def answer_async(self, test_q: str) -> str:
+    async def run_async(self, test_q: str, **kwargs) -> str:
         if self.demos is None:
-            raise RuntimeError("Call fit(...) or fit_async(...) before answer_async(...)")
+            raise RuntimeError("Call fit() or fit_async() before run_async()")
         context = "\n\n".join(self.demos)
         payload = f"{context}\n\nQ: {test_q}\nA: {self.prompt_template}"
         logger.debug("Async AutoCoT payload:\n%s", payload)
         return await self.llm.generate_async(
             payload,
-            max_tokens=self.max_tokens,
-            seed=self.rand_seed,
+            max_tokens=kwargs.pop("max_tokens", self.max_tokens),
+            seed=kwargs.pop("seed", self.rand_seed),
+            **kwargs,
         )
-
-    __call__ = answer

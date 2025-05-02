@@ -3,8 +3,8 @@ import argparse
 import asyncio
 import logging
 
-from cogitator.cdw_cot import CDWCoT
-from cogitator.model import BaseLLM
+from cogitator import CDWCoT
+from cogitator import BaseLLM
 from examples.shared import get_llm, run_main, setup_logging
 
 setup_logging()
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def setup_cdw_cot(llm: BaseLLM) -> CDWCoT:
-    return CDWCoT(llm, pool_size=8, n_clusters=2, lr=0.1, temp=0.5, sample_size=3)
+    return CDWCoT(llm, pool_size=8, n_clusters=2, lr=0.1, sample_size=3)
 
 
 TRAIN_QUESTIONS = [
@@ -40,8 +40,8 @@ async def main_async(args: argparse.Namespace):
         await cdw.init_pool_async(TRAIN_QUESTIONS, TRAIN_ANSWERS, semaphore=semaphore)
         logger.info("Training CDW-CoT asynchronously...")
         await cdw.train_async(val_split=0.4, epochs=5, patience=3, semaphore=semaphore)
-        logger.info("Answering test questions asynchronously...")
-        tasks = [cdw.answer_async(q, semaphore=semaphore) for q in TEST_QUERIES]
+        logger.info("Running test questions asynchronously...")
+        tasks = [cdw.run_async(q, semaphore=semaphore) for q in TEST_QUERIES]
         answers = await asyncio.gather(*tasks)
         for q, a in zip(TEST_QUERIES, answers):
             print(f"Q: {q}\nA: {a}\n")
@@ -58,9 +58,9 @@ def main_sync(args: argparse.Namespace):
         cdw.init_pool(TRAIN_QUESTIONS, TRAIN_ANSWERS)
         logger.info("Training CDW-CoT synchronously...")
         cdw.train(val_split=0.4, epochs=5, patience=3)
-        logger.info("Answering test questions synchronously...")
+        logger.info("Running test questions synchronously...")
         for q in TEST_QUERIES:
-            out = cdw.answer(q)
+            out = cdw.run(q)
             print(f"Q: {q}\nA: {out}\n")
     except Exception as e:
         logger.error(f"CDW-CoT sync example failed: {e}", exc_info=True)

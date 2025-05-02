@@ -392,8 +392,8 @@ class OllamaLLM(BaseLLM):
         try:
             self._client = Client(host=self.host)
             self._async_client = AsyncClient(host=self.host)
-            # Optional: Add a quick check to see if the host is reachable
-            # self._client.list()
+            logger.debug(f"Checking available models on Ollama host: {self._client.list()}",
+                         exc_info=True)
         except Exception as e:
             logger.error(
                 f"Failed to initialize Ollama client (host: {self.host}): {e}", exc_info=True
