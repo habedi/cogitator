@@ -47,21 +47,20 @@ into your AI applications.
 
 ### Getting Started
 
+#### Installation
+
 ```bash
-pip install cogitator[dev]
+pip install cogitator
 ```
 
 #### Examples
 
-| File                                                          | Description                                                           |
-|---------------------------------------------------------------|-----------------------------------------------------------------------|
-| [run_least_to_most.py](examples/run_least_to_most.py)         | Example of using the Least-to-Most prompting method                   |
-| [run_sc_cot.py](examples/run_sc_cot.py)                       | Example of using the Self-Consistency prompting method                |
-| [run_auto_cot.py](examples/run_auto_cot.py)                   | Example of using the Automatic CoT prompting method                   |
-| [run_tree_of_thoughts.py](examples/run_tree_of_thoughts.py)   | Example of using the Tree of Thoughts prompting method                |
-| [run_graph_of_thoughts.py](examples/run_graph_of_thoughts.py) | Example of using the Graph of Thoughts prompting method               |
-| [run_cdw_cot.py](examples/run_cdw_cot.py)                     | Example of using the Clustered Distance-Weighted CoT prompting method |
-| [shared.py](examples/shared.py)                               | Shared utilies and settings for the examples                          |
+See the [examples](examples) directory for usage examples of each CoT method.
+
+#### Benchmarks
+
+Check out the [benches](benches) directory for benchmarks comparing the performance of the different CoT methods on
+various datasets.
 
 ---
 

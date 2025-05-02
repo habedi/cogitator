@@ -2,7 +2,7 @@ import asyncio
 import logging
 import re
 from collections import Counter
-from typing import Any, AsyncIterator, Iterator, List, Optional, Literal
+from typing import Any, AsyncIterator, Iterator, List, Literal, Optional
 
 from .model import BaseLLM
 from .schemas import ExtractedAnswer

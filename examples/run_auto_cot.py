@@ -3,8 +3,8 @@ import argparse
 import asyncio
 import logging
 
-from cogitator import AutoCoT
-from cogitator import BaseLLM
+from cogitator import AutoCoT, BaseLLM
+
 from examples.shared import get_llm, run_main, setup_logging
 
 setup_logging()

@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional, Tuple, Literal
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 

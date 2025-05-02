@@ -1,4 +1,4 @@
-from typing import List, Any
+from typing import List, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -17,4 +17,6 @@ class EvaluationResult(BaseModel):
 
 
 class ExtractedAnswer(BaseModel):
-    final_answer: Any = Field(..., description="The final extracted answer")
+    final_answer: Optional[Union[str, int, float]] = Field(
+        ..., description="The final extracted answer"
+    )

@@ -392,8 +392,9 @@ class OllamaLLM(BaseLLM):
         try:
             self._client = Client(host=self.host)
             self._async_client = AsyncClient(host=self.host)
-            logger.debug(f"Checking available models on Ollama host: {self._client.list()}",
-                         exc_info=True)
+            logger.debug(
+                f"Checking available models on Ollama host: {self._client.list()}", exc_info=True
+            )
         except Exception as e:
             logger.error(
                 f"Failed to initialize Ollama client (host: {self.host}): {e}", exc_info=True
@@ -473,10 +474,11 @@ class OllamaLLM(BaseLLM):
             resp = self._client.chat(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
-                format="json",  # Explicitly set format to json
+                format=schema,
                 options=opts,
                 # template=f"{{{{ .Prompt }}}}\nRespond strictly with JSON matching this schema:\n{json.dumps(schema)}" # Optionally guide model with schema
             )
+
             # Ollama with format='json' should return the JSON string directly in content
             return self._strip_content(resp)
         except Exception as e:
@@ -493,7 +495,7 @@ class OllamaLLM(BaseLLM):
             resp = await self._async_client.chat(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
-                format="json",  # Explicitly set format to json
+                format=schema,
                 options=opts,
                 # template=f"{{{{ .Prompt }}}}\nRespond strictly with JSON matching this schema:\n{json.dumps(schema)}"
             )

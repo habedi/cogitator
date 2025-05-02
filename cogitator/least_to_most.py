@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import List, Optional, Tuple, Literal
+from typing import List, Literal, Optional, Tuple
 
 from pydantic import ValidationError
 
@@ -256,7 +256,7 @@ class LeastToMost:
         return solved
 
     def run(self, question: str, **kwargs) -> str:
-        final_answer = f"[Error: Processing failed]"
+        final_answer = "[Error: Processing failed]"
         try:
             subs = self.decompose(question, **kwargs)
             solved = self.solve(question, subs, **kwargs)
@@ -291,7 +291,7 @@ class LeastToMost:
     async def run_async(
         self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs
     ) -> str:
-        final_answer = f"[Error: Async processing failed]"
+        final_answer = "[Error: Async processing failed]"
         try:
             subs = await self.decompose_async(question, semaphore, **kwargs)
             solved = await self.solve_async(question, subs, semaphore, **kwargs)

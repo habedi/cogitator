@@ -3,8 +3,8 @@ import argparse
 import asyncio
 import logging
 
-from cogitator import GraphOfThoughts
-from cogitator import BaseLLM
+from cogitator import BaseLLM, GraphOfThoughts
+
 from examples.shared import get_llm, run_main, setup_logging
 
 setup_logging()
