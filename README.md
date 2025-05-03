@@ -15,6 +15,7 @@
 [![Documentation](https://img.shields.io/badge/docs-latest-3776ab?style=flat&labelColor=555555&logo=read-the-docs)](https://github.com/habedi/cogitator/blob/main/docs)
 [![License](https://img.shields.io/badge/license-MIT-00acc1?style=flat&labelColor=555555&logo=open-source-initiative)](https://github.com/habedi/cogitator/blob/main/LICENSE)
 [![Status](https://img.shields.io/badge/status-pre--release-orange?style=flat&labelColor=555555&logo=github)](https://github.com/habedi/cogitator)
+[![DOI](https://img.shields.io/badge/doi-10.5281/zenodo.15331822-purple.svg)](https://doi.org/10.5281/zenodo.15331822)
 
 A Python toolkit for chain-of-thought prompting
 
