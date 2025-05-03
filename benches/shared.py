@@ -415,7 +415,7 @@ def add_generation_args(parser: argparse.ArgumentParser):
     parser.add_argument("--provider", choices=["openai", "ollama"], default="ollama",
                         help="LLM provider for generation (default: ollama)")
     parser.add_argument("--model-name", default=None,
-                        help="Name of the generation model (default: gemma3:4b/gpt-4.1-nano)")
+                        help="Name of the generation model (default: gemma3:4b or gpt-4.1-nano)")
     parser.add_argument("--use-async", action="store_true", help="Run generation asynchronously")
     parser.add_argument("--concurrency", type=int, default=3,
                         help="Max concurrent requests for async generation (default: 3)")
@@ -433,7 +433,7 @@ def add_evaluation_args(parser: argparse.ArgumentParser):
     parser.add_argument("--extractor-provider", choices=["openai", "ollama"], default="ollama",
                         help="LLM provider for LLM-based extraction (default: ollama)")
     parser.add_argument("--extractor-model-name", default=None,
-                        help="Name of the model for LLM-based extraction (default: gemma3:4b/gpt-4o-mini)")
+                        help="Name of the model for LLM-based extraction (default: gemma3:4b or gpt-4.1-nano)")
     parser.add_argument("--show-details", action="store_true",
                         help="Show detailed results (Q, Gold, Pred, Correct, Time) for each question during evaluation.")
 
@@ -441,51 +441,51 @@ def add_evaluation_args(parser: argparse.ArgumentParser):
 logger_samples = logging.getLogger("dataset_sampler")
 
 
-def show_dataset_samples(dataset_name: str, num_samples: int = 5):
+def show_dataset_samples(ds_name: str, num_samples: int = 5):
     """
     Loads a specified dataset from the registry and prints the first few samples.
 
     Args:
-        dataset_name: The name of the dataset as defined in Datasets.registry.
+        ds_name: The name of the dataset as defined in Datasets.registry.
         num_samples: The number of samples to display.
     """
-    if dataset_name not in Datasets.registry:
-        logger_samples.error(f"Dataset '{dataset_name}' not found in registry.")
+    if ds_name not in Datasets.registry:
+        logger_samples.error(f"Dataset '{ds_name}' not found in registry.")
         return
 
-    logger_samples.info(f"Loading raw samples for dataset: {dataset_name}")
+    logger_samples.info(f"Loading raw samples for dataset: {ds_name}")
     ds = None
     try:
         # Replicate the load_dataset calls from the Datasets class methods
-        if dataset_name == "gsm8k":
+        if ds_name == "gsm8k":
             ds = load_dataset("openai/gsm8k", "main", split="test", trust_remote_code=True)
-        elif dataset_name == "multiarith":
+        elif ds_name == "multiarith":
             ds = load_dataset("ChilleD/MultiArith", split="train", trust_remote_code=True)
-        elif dataset_name == "aqua":
+        elif ds_name == "aqua":
             ds = load_dataset("deepmind/aqua_rat", split="test", trust_remote_code=True)
-        elif dataset_name == "csqa":
+        elif ds_name == "csqa":
             # Note: split='train' might be large, consider 'validation' if available/smaller
             ds = load_dataset("tau/commonsense_qa", split="train", trust_remote_code=True)
-        elif dataset_name == "strategyqa":
+        elif ds_name == "strategyqa":
             ds = load_dataset("ChilleD/StrategyQA", split="train", trust_remote_code=True)
-        elif dataset_name == "coin":
+        elif ds_name == "coin":
             ds = load_dataset("skrishna/coin_flip", split="train", trust_remote_code=True)
-        elif dataset_name == "letter":
+        elif ds_name == "letter":
             ds = load_dataset("ChilleD/LastLetterConcat", split="train", trust_remote_code=True)
         else:
             # Should not happen due to registry check, but safeguard
-            logger_samples.error(f"No specific loading logic defined for dataset: {dataset_name}")
+            logger_samples.error(f"No specific loading logic defined for dataset: {ds_name}")
             return
 
     except Exception as e:
-        logger_samples.error(f"Failed to load dataset '{dataset_name}': {e}", exc_info=True)
+        logger_samples.error(f"Failed to load dataset '{ds_name}': {e}", exc_info=True)
         return
 
     if ds is None:
-        logger_samples.error(f"Dataset object for '{dataset_name}' is None after loading attempt.")
+        logger_samples.error(f"Dataset object for '{ds_name}' is None after loading attempt.")
         return
 
-    print(f"\n--- First {num_samples} Samples for Dataset: {dataset_name} ---")
+    print(f"\n--- First {num_samples} Samples for Dataset: {ds_name} ---")
 
     try:
         actual_samples = min(num_samples, len(ds))
@@ -518,7 +518,7 @@ def show_dataset_samples(dataset_name: str, num_samples: int = 5):
 
     except Exception as e:
         logger_samples.error(
-            f"Failed to process or display samples for dataset '{dataset_name}': {e}",
+            f"Failed to process or display samples for dataset '{ds_name}': {e}",
             exc_info=True)
 
 
