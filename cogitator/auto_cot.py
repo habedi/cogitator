@@ -4,8 +4,10 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
+from .clustering import BaseClusterer, KMeansClusterer
+from .embedding import BaseEmbedder, SentenceTransformerEmbedder
 from .model import BaseLLM
-from .utils import approx_token_length, cluster_embeddings, count_steps, encode
+from .utils import approx_token_length, count_steps
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,8 @@ class AutoCoT:
         max_retries: int = 2,
         max_tokens: Optional[int] = None,
         rand_seed: Optional[int] = None,
+        embedder: Optional[BaseEmbedder] = None,
+        clusterer: Optional[BaseClusterer] = None,
     ) -> None:
         self.llm = llm
         self.n_demos = n_demos
@@ -31,14 +35,22 @@ class AutoCoT:
         self.max_retries = max_retries
         self.max_tokens = max_tokens
         self.rand_seed = rand_seed
+        self.embedder = embedder or SentenceTransformerEmbedder()
+        self.clusterer = clusterer or KMeansClusterer()
         self.demos: Optional[List[str]] = None
 
     def fit(self, questions: List[str]) -> None:
         if len(questions) < self.n_demos:
             raise ValueError(f"Need >= {self.n_demos} questions, got {len(questions)}")
 
-        embs = np.stack(encode(questions))
-        labels, centers = cluster_embeddings(embs, self.n_demos, random_seed=self.rand_seed or 0)
+        embs_list = self.embedder.encode(questions)
+        if len(embs_list) == 0:
+            raise RuntimeError("Embedding failed to produce results.")
+        embs = np.stack(embs_list)
+
+        labels, centers = self.clusterer.cluster(
+            embs, self.n_demos, random_seed=self.rand_seed or 0
+        )
 
         candidate_demos: List[Tuple[int, str]] = []
         for c in range(self.n_demos):
@@ -92,8 +104,14 @@ class AutoCoT:
         if len(questions) < self.n_demos:
             raise ValueError(f"Need >= {self.n_demos} questions, got {len(questions)}")
 
-        embs = np.stack(encode(questions))
-        labels, centers = cluster_embeddings(embs, self.n_demos, random_seed=self.rand_seed or 0)
+        embs_list = self.embedder.encode(questions)
+        if len(embs_list) == 0:
+            raise RuntimeError("Embedding failed to produce results.")
+        embs = np.stack(embs_list)
+
+        labels, centers = self.clusterer.cluster(
+            embs, self.n_demos, random_seed=self.rand_seed or 0
+        )
 
         candidate_demos_info: List[Tuple[int, str]] = []
         for c in range(self.n_demos):

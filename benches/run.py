@@ -7,13 +7,13 @@ import sys
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from benches.shared import (
+    setup_logging, Datasets, get_llm, RANDOM_SEED, MAX_TOKEN,
+    add_common_args, add_generation_args
+)
 from cogitator import (
     AutoCoT, CDWCoT, GraphOfThoughts, LeastToMost, SelfConsistency,
     TreeOfThoughts, BaseLLM
-)
-from shared import (
-    setup_logging, Datasets, get_llm, RANDOM_SEED, MAX_TOKEN,
-    add_common_args, add_generation_args
 )
 
 logger = logging.getLogger("benchmark_run")

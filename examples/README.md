@@ -32,5 +32,6 @@ make example-ollama
 make example-openai
 ```
 
-> [!NOTE]
-> Examples should be run from the root directory of the repository.
+Note that the examples should be run from the root directory of the repository.
+Additionally, to use `gemma3:4b` (or any other model like `gemma3:12b`) with Ollama, it must be pulled (or downloaded)
+first.

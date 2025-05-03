@@ -56,6 +56,9 @@ addopts = [
     "--cov-report=term",
     "--cov-report=xml",
 ]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
 
 [tool.coverage.run]
 branch = true

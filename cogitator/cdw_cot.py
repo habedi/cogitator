@@ -5,8 +5,10 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
+from .clustering import BaseClusterer, KMeansClusterer
+from .embedding import BaseEmbedder, SentenceTransformerEmbedder
 from .model import BaseLLM
-from .utils import accuracy, cluster_embeddings, encode, exact_match
+from .utils import accuracy, exact_match
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,8 @@ class CDWCoT:
         max_tokens: Optional[int] = None,
         max_grad_norm: float = 1.0,
         init_pool_retries: int = 1,
+        embedder: Optional[BaseEmbedder] = None,
+        clusterer: Optional[BaseClusterer] = None,
     ) -> None:
         self.llm = llm
         self.pool_size = pool_size
@@ -34,6 +38,8 @@ class CDWCoT:
         self.max_tokens = max_tokens
         self.max_grad_norm = max_grad_norm
         self.init_pool_retries = init_pool_retries
+        self.embedder = embedder or SentenceTransformerEmbedder()
+        self.clusterer = clusterer or KMeansClusterer()
 
         self.cluster_centers: Optional[np.ndarray] = None
         self.PC: List[str] = []
@@ -53,9 +59,13 @@ class CDWCoT:
             raise ValueError("Cannot initialize pool with zero clusters")
 
         logger.info(f"Encoding {N} questions for clustering...")
-        embs = np.stack(encode(questions))
+        embs_list = self.embedder.encode(questions)
+        if len(embs_list) == 0:
+            raise RuntimeError("Embedding failed to produce results.")
+        embs = np.stack(embs_list)
+
         logger.info(f"Clustering embeddings into {effective_n} clusters...")
-        labels, centers = cluster_embeddings(embs, effective_n, random_seed=self.seed or 0)
+        labels, centers = self.clusterer.cluster(embs, effective_n, random_seed=self.seed or 0)
         self.cluster_centers = centers
         self.train_labels = labels.tolist()
 
@@ -610,7 +620,7 @@ class CDWCoT:
 
         try:
             logger.debug(f"Encoding question for distribution calculation: '{question[:50]}...'")
-            q_emb_list = encode([question])
+            q_emb_list = self.embedder.encode([question])
 
             if len(q_emb_list) == 0 or q_emb_list[0] is None:
                 raise ValueError("Encoding failed or returned None for the input question.")

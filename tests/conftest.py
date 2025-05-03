@@ -1,17 +1,15 @@
-# tests/conftest.py (Modified)
 import asyncio
 import json
 import logging
-from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Optional, Tuple, \
-    Type  # Added Tuple
+from typing import Any, AsyncIterator, Callable, Dict, Iterator, List, Optional, Tuple, Type
 
 import numpy as np
 import pytest
 from pydantic import BaseModel
 
-import cogitator.utils as clust_module
-import cogitator.utils as emb_module
 from cogitator import BaseLLM
+from cogitator.clustering import BaseClusterer
+from cogitator.embedding import BaseEmbedder
 from cogitator.schemas import (
     EvaluationResult,
     ExtractedAnswer,
@@ -168,9 +166,8 @@ class ConfigurableFakeLLM(BaseLLM):
         response = self._get_response_for_prompt(prompt, "async_stream")
         yield str(response) + "_async_stream"
 
-    # --- MODIFICATION START ---
     def _generate_json_internal(self, prompt: str, response_model: Type[BaseModel],
-                                **kwargs: Any) -> Tuple[str, Optional[str]]:  # Return tuple
+                                **kwargs: Any) -> Tuple[str, Optional[str]]:
         self.sync_calls.append({
             "type": "_generate_json_internal",
             "prompt": prompt,
@@ -199,12 +196,12 @@ class ConfigurableFakeLLM(BaseLLM):
                     f"Mock cannot dump configured response to JSON: {type(response_obj)}")
                 json_string = "{}"
 
-        mode_used = "mock_json_mode"  # Return a dummy mode or None
+        mode_used = "mock_json_mode"
         return json_string, mode_used
 
     async def _generate_json_internal_async(self, prompt: str, response_model: Type[BaseModel],
                                             **kwargs: Any) -> Tuple[
-        str, Optional[str]]:  # Return tuple
+        str, Optional[str]]:
         self.async_calls.append({
             "type": "_generate_json_internal_async",
             "prompt": prompt,
@@ -234,9 +231,8 @@ class ConfigurableFakeLLM(BaseLLM):
                     f"Mock cannot dump configured async response to JSON: {type(response_obj)}")
                 json_string = "{}"
 
-        mode_used = "mock_json_mode_async"  # Return a dummy mode or None
+        mode_used = "mock_json_mode_async"
         return json_string, mode_used
-    # --- MODIFICATION END ---
 
 
 @pytest.fixture
@@ -247,45 +243,43 @@ def fake_llm_factory() -> Callable[[Optional[Dict[str, Any]]], ConfigurableFakeL
     return _create_llm
 
 
-@pytest.fixture
-def patch_embedding_clustering(monkeypatch):
-    logger.debug("Patching embedding and clustering")
-
-    def fake_encode(texts: List[str]) -> List[np.ndarray]:
-        logger.debug(f"Fake encoding texts: {texts}")
-
+class MockEmbedder(BaseEmbedder):
+    def encode(self, texts: List[str]) -> List[np.ndarray]:
+        logger.debug(f"Mock encoding texts: {texts}")
         return [np.array([float(i), float(i + 1)], dtype=float) for i in range(len(texts))]
 
-    monkeypatch.setattr(emb_module, "encode", fake_encode)
 
-    def fake_cluster(embs: np.ndarray, n_clusters: int, random_state: int = 33) -> tuple[
+class MockClusterer(BaseClusterer):
+    def cluster(self, embeddings: np.ndarray, n_clusters: int, **kwargs) -> Tuple[
         np.ndarray, np.ndarray]:
-        logger.debug(f"Fake clustering embeddings (shape {embs.shape}) into {n_clusters} clusters")
-
-        if embs.shape[0] == 0 or n_clusters <= 0:
-
-            output_dim = embs.shape[1] if len(embs.shape) > 1 and embs.shape[1] > 0 else 1
+        logger.debug(
+            f"Mock clustering embeddings (shape {embeddings.shape}) into {n_clusters} clusters")
+        if embeddings.shape[0] == 0 or n_clusters <= 0:
+            output_dim = embeddings.shape[1] if len(
+                embeddings.shape) > 1 and embeddings.shape[1] > 0 else 1
             labels = np.array([], dtype=int)
             centers = np.array([], dtype=float).reshape(0, output_dim)
-
         else:
-            output_dim = embs.shape[1]
-            n_clusters = min(n_clusters, embs.shape[0])
-
-            labels = (embs[:, 0] % n_clusters).astype(int)
-
+            output_dim = embeddings.shape[1]
+            n_clusters = min(n_clusters, embeddings.shape[0])
+            labels = (embeddings[:, 0] % n_clusters).astype(int)
             centers = np.array(
-                [embs[labels == i].mean(axis=0) if np.any(labels == i) else np.zeros(output_dim)
-                 for i in range(n_clusters)])
-
+                [embeddings[labels == i].mean(axis=0) if np.any(labels == i) else np.zeros(
+                    output_dim) for i in range(n_clusters)])
             if centers.ndim == 1 and output_dim > 0:
                 centers = centers.reshape(-1, output_dim)
             elif centers.ndim == 0 and output_dim == 0:
-                centers = centers.reshape(n_clusters,
-                                          1)
-
+                centers = centers.reshape(n_clusters, 1)
         logger.debug(f"Generated labels: {labels}")
         logger.debug(f"Generated centers shape: {centers.shape}")
         return labels, centers
 
-    monkeypatch.setattr(clust_module, "cluster_embeddings", fake_cluster)
+
+@pytest.fixture
+def patch_embedding_clustering(monkeypatch):
+    logger.debug("Patching embedding and clustering classes")
+    monkeypatch.setattr("cogitator.auto_cot.SentenceTransformerEmbedder", MockEmbedder)
+    monkeypatch.setattr("cogitator.auto_cot.KMeansClusterer", MockClusterer)
+    monkeypatch.setattr("cogitator.cdw_cot.SentenceTransformerEmbedder", MockEmbedder)
+    monkeypatch.setattr("cogitator.cdw_cot.KMeansClusterer", MockClusterer)
+    monkeypatch.setattr("cogitator.graph_of_thoughts.SentenceTransformerEmbedder", MockEmbedder)
