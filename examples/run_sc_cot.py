@@ -27,7 +27,7 @@ PROMPT = (
 )
 
 
-async def main_async(args: argparse.Namespace):
+async def main_async(args: argparse.Namespace) -> None:
     llm = get_llm(args.provider, args.model_name, args.openai_key)
     sc = setup_sc(llm)
     semaphore = asyncio.Semaphore(5)
@@ -38,7 +38,7 @@ async def main_async(args: argparse.Namespace):
     print(f"Final Answer (async self-consistency): {answer}")
 
 
-def main_sync(args: argparse.Namespace):
+def main_sync(args: argparse.Namespace) -> None:
     llm = get_llm(args.provider, args.model_name, args.openai_key)
     sc = setup_sc(llm)
 

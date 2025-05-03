@@ -40,7 +40,7 @@ class LeastToMost:
         max_subqs: int = 10,
         max_tokens: Optional[int] = None,
         seed: Optional[int] = None,
-    ):
+    ) -> None:
         self.llm = llm
         self.intermediate_output_format = intermediate_output_format
         self.max_subqs = max_subqs

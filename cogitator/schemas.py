@@ -12,7 +12,7 @@ class ThoughtExpansion(BaseModel):
 
 
 class EvaluationResult(BaseModel):
-    score: int = Field(..., description="Quality score from 1 to 10", ge=1, le=10)
+    score: int = Field(..., description="Quality score from 1 to 10")
     justification: str = Field(..., description="Brief justification for the score")
 
 

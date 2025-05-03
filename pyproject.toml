@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "cogitator"
-version = "0.1.0a2"
+version = "0.1.0a3"
 description = "A Python toolkit for chain-of-thought prompting"
 authors = ["Hassan Abedi <hassan.abedi.t+cogitator@gmail.com>"]
 license = "MIT"
@@ -112,6 +112,7 @@ line-length = 100
 indent-width = 4
 src = ["cogitator", "examples"]
 target-version = "py310"
+unsafe-fixes = true
 
 [tool.ruff.lint]
 select = ["ANN", "E", "F", "I"]

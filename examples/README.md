@@ -33,4 +33,4 @@ make example-openai
 ```
 
 > [!NOTE]
-> Examples should be run in the root directory of the repository.
+> Examples should be run from the root directory of the repository.

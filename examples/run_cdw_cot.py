@@ -30,7 +30,7 @@ TRAIN_ANSWERS = ["7", "4", "12", "4", "8", "5", "8", "15"]
 TEST_QUERIES = ["If you have 3 boxes of 5 pens each, how many pens?", "Solve for y: y – 2 = 4"]
 
 
-async def main_async(args: argparse.Namespace):
+async def main_async(args: argparse.Namespace) -> None:
     llm = get_llm(args.provider, args.model_name, args.openai_key)
     cdw = setup_cdw_cot(llm)
     semaphore = asyncio.Semaphore(5)
@@ -49,7 +49,7 @@ async def main_async(args: argparse.Namespace):
         logger.error(f"CDW-CoT async example failed: {e}", exc_info=True)
 
 
-def main_sync(args: argparse.Namespace):
+def main_sync(args: argparse.Namespace) -> None:
     llm = get_llm(args.provider, args.model_name, args.openai_key)
     cdw = setup_cdw_cot(llm)
 

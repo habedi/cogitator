@@ -22,7 +22,7 @@ class AutoCoT:
         max_retries: int = 2,
         max_tokens: Optional[int] = None,
         rand_seed: Optional[int] = None,
-    ):
+    ) -> None:
         self.llm = llm
         self.n_demos = n_demos
         self.max_q_tokens = max_q_tokens

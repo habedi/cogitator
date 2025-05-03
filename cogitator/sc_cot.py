@@ -22,7 +22,7 @@ class SelfConsistency:
         answer_extraction_prompt: Optional[str] = None,
         seed: Optional[int] = None,
         **gen_kwargs: Any,
-    ):
+    ) -> None:
         self.llm = llm
         self.n_samples = n_samples
         self.temperature = temperature

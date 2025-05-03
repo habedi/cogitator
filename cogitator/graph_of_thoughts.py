@@ -33,7 +33,7 @@ class GraphOfThoughts:
             steps: List[str],
             parents: Optional[List["GraphOfThoughts._Node"]] = None,
             data: Optional[Any] = None,
-        ):
+        ) -> None:
             self.id = GraphOfThoughts._Node._id_counter
             GraphOfThoughts._Node._id_counter += 1
 
@@ -100,7 +100,7 @@ class GraphOfThoughts:
         final_answer_format: Literal["text", "json"] = "text",
         max_tokens: Optional[int] = None,
         seed: Optional[int] = None,
-    ):
+    ) -> None:
         self.llm = llm
         self.max_iters = max_iters
         self.num_branches = num_branches
@@ -369,7 +369,16 @@ class GraphOfThoughts:
                     seed=local_kwargs_final.pop("seed", self.seed),
                     **local_kwargs_final,
                 )
-                return parsed.final_answer.strip()
+                # --- FIX: Handle non-string types ---
+                final_answer_value = parsed.final_answer
+                if isinstance(final_answer_value, str):
+                    return final_answer_value.strip()
+                elif final_answer_value is not None:
+                    return str(final_answer_value)  # Convert numbers to string
+                else:
+                    logger.warning("GoT final JSON extraction returned None.")
+                    return ""
+                # --- End FIX ---
             else:
                 return self.llm.generate(
                     final_prompt,
@@ -551,7 +560,16 @@ class GraphOfThoughts:
                         parsed = await self.llm.generate_json_async(json_req, **gen_args)
                 else:
                     parsed = await self.llm.generate_json_async(json_req, **gen_args)
-                return parsed.final_answer.strip()
+                # --- FIX: Handle non-string types ---
+                final_answer_value = parsed.final_answer
+                if isinstance(final_answer_value, str):
+                    return final_answer_value.strip()
+                elif final_answer_value is not None:
+                    return str(final_answer_value)  # Convert numbers to string
+                else:
+                    logger.warning("GoT final async JSON extraction returned None.")
+                    return ""
+                # --- End FIX ---
             else:
                 gen_args = {
                     "max_tokens": final_max_tokens,

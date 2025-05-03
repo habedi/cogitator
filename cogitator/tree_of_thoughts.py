@@ -18,7 +18,7 @@ class TreeOfThoughts:
             steps: List[str],
             parent: Optional["TreeOfThoughts._Node"] = None,
             prior: float = 1.0,
-        ):
+        ) -> None:
             self.steps = steps
             self.parent = parent
             self.children: List["TreeOfThoughts._Node"] = []
@@ -59,7 +59,7 @@ class TreeOfThoughts:
         *,
         max_tokens: Optional[int] = 256,
         seed: Optional[int] = None,
-    ):
+    ) -> None:
         self.llm = llm
         self.max_depth = max_depth
         self.num_branches = num_branches

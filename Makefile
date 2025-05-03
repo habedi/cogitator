@@ -62,10 +62,6 @@ publish: ## Publish the library to PyPI (requires PYPI_TOKEN to be set)
 	$(POETRY) config pypi-token.pypi $(PYPI_TOKEN)
 	$(POETRY) publish --build
 
-# Combined checks
-.PHONY: check
-check: lint typecheck test ## Run linter checks, typechecking, and tests
-
 .PHONY: example-openai
 example-openai: ## Run the examples using OpenAI (needs OPENAI_API_KEY to be set)
 	@for script in $(EXAMPLE_DIR)/run_*.py; do \

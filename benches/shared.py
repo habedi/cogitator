@@ -1,4 +1,3 @@
-# benches/shared.py
 import argparse
 import logging
 import os
@@ -12,7 +11,7 @@ from cogitator.schemas import ExtractedAnswer
 
 logger = logging.getLogger("benchmark_shared")
 
-MAX_TOKEN = 512
+MAX_TOKEN = 1024
 RANDOM_SEED = 33
 
 EXTRACTION_PROMPT_TEMPLATE = """
@@ -293,7 +292,7 @@ def extract_final_answer(raw_output: str) -> str:
 
 
 def extract_final_answer_by_llm(
-    raw_output: str, llm: BaseLLM, question: str, **kwargs
+        raw_output: str, llm: BaseLLM, question: str, **kwargs
 ) -> str:
     if not raw_output or raw_output == "[ERROR]" or raw_output.startswith("[ERROR:"):
         logger.warning("Skipping LLM extraction for input marked as error.")
@@ -333,7 +332,7 @@ def extract_final_answer_by_llm(
 
 
 async def extract_final_answer_by_llm_async(
-    raw_output: str, llm: BaseLLM, question: str, **kwargs
+        raw_output: str, llm: BaseLLM, question: str, **kwargs
 ) -> str:
     if not raw_output or raw_output == "[ERROR]" or raw_output.startswith("[ERROR:"):
         logger.warning("Skipping async LLM extraction for input marked as error.")
@@ -378,16 +377,16 @@ async def extract_final_answer_by_llm_async(
 
 
 def log_single_result(
-    show_details: bool,
-    idx: int,
-    name: str,
-    mode: str,
-    question: str,
-    gold: str,
-    raw_pred: str,
-    extracted_pred: str,
-    time_taken: float,
-    is_correct: bool,
+        show_details: bool,
+        idx: int,
+        name: str,
+        mode: str,
+        question: str,
+        gold: str,
+        raw_pred: str,
+        extracted_pred: str,
+        time_taken: float,
+        is_correct: bool,
 ):
     if not show_details:
         return
@@ -398,7 +397,7 @@ def log_single_result(
     print(f"  Extracted: '{extracted_pred}'")
     print(f"  Correct: {is_correct}")
     print(f"  Time: {time_taken:.2f}s")
-    print("-" * 20)
+    print("-" * 80)
 
 
 def add_common_args(parser: argparse.ArgumentParser):
@@ -420,7 +419,8 @@ def add_generation_args(parser: argparse.ArgumentParser):
     parser.add_argument("--concurrency", type=int, default=3,
                         help="Max concurrent requests for async generation (default: 3)")
     parser.add_argument("--use-json", action="store_true",
-                        help="Use JSON format/parsing within strategies where applicable (LtM intermediates/final, GoT final, SC internal).")
+                        help="Use JSON format and parsing within strategies where applicable"
+                             " (LtM intermediates and final, GoT final, SC internal).")
     parser.add_argument("--output-file", default="benchmark_results.jsonl",
                         help="File to save raw generation results (default: benchmark_results.jsonl)")
 
@@ -428,14 +428,15 @@ def add_generation_args(parser: argparse.ArgumentParser):
 def add_evaluation_args(parser: argparse.ArgumentParser):
     parser.add_argument("--input-file", required=True,
                         help="Path to the JSONL file containing raw generation results.")
-    parser.add_argument("--extractor", choices=["heuristic", "llm"], default="heuristic",
-                        help="Extraction method to use (default: heuristic)")
-    parser.add_argument("--extractor-provider", choices=["openai", "ollama"], default="ollama",
+    parser.add_argument("--extractor-type", choices=["heuristic", "llm"], default="heuristic",
+                        help="Extractor type (default: heuristic)")
+    parser.add_argument("--provider", choices=["openai", "ollama"], default="ollama",
                         help="LLM provider for LLM-based extraction (default: ollama)")
-    parser.add_argument("--extractor-model-name", default=None,
+    parser.add_argument("--model-name", default=None,
                         help="Name of the model for LLM-based extraction (default: gemma3:4b or gpt-4.1-nano)")
     parser.add_argument("--show-details", action="store_true",
-                        help="Show detailed results (Q, Gold, Pred, Correct, Time) for each question during evaluation.")
+                        help="Show detailed results (question, answer, predicted answer, was answer correct,"
+                             " processing time) for each question during evaluation.")
 
 
 logger_samples = logging.getLogger("dataset_sampler")
@@ -464,7 +465,6 @@ def show_dataset_samples(ds_name: str, num_samples: int = 5):
         elif ds_name == "aqua":
             ds = load_dataset("deepmind/aqua_rat", split="test", trust_remote_code=True)
         elif ds_name == "csqa":
-            # Note: split='train' might be large, consider 'validation' if available/smaller
             ds = load_dataset("tau/commonsense_qa", split="train", trust_remote_code=True)
         elif ds_name == "strategyqa":
             ds = load_dataset("ChilleD/StrategyQA", split="train", trust_remote_code=True)
@@ -503,7 +503,7 @@ def show_dataset_samples(ds_name: str, num_samples: int = 5):
             print("Could not determine columns.")
             return  # Cannot proceed without features
 
-        print("-" * 50)  # Separator
+        print("-" * 80)  # Separator
 
         # Iterate and print rows
         for i in range(actual_samples):
@@ -514,7 +514,7 @@ def show_dataset_samples(ds_name: str, num_samples: int = 5):
                 value_str = str(value)
                 truncated_value = value_str[:150] + ('...' if len(value_str) > 150 else '')
                 print(f"  {col_name}: {truncated_value}")
-            print("-" * 20)  # Separator between rows
+            print("-" * 80)  # Separator between rows
 
     except Exception as e:
         logger_samples.error(

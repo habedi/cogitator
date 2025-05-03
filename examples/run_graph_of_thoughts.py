@@ -28,7 +28,7 @@ QUESTIONS = [
 ]
 
 
-async def main_async(args: argparse.Namespace):
+async def main_async(args: argparse.Namespace) -> None:
     llm = get_llm(args.provider, args.model_name, args.openai_key)
     got = setup_got(llm)
     semaphore = asyncio.Semaphore(5)
@@ -41,7 +41,7 @@ async def main_async(args: argparse.Namespace):
         print(f"Q: {q}\nA: {a}\n")
 
 
-def main_sync(args: argparse.Namespace):
+def main_sync(args: argparse.Namespace) -> None:
     llm = get_llm(args.provider, args.model_name, args.openai_key)
     got = setup_got(llm)
 

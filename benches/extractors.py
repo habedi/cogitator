@@ -190,7 +190,7 @@ def extract_answer_heuristic_custom(raw_output: str, dataset_name: str) -> str:
         The extracted answer string, or "[EXTRACTION_HEURISTIC_FAILURE]".
     """
     if not raw_output or str(raw_output).strip() == "[ERROR]" or str(raw_output).strip().startswith(
-        "[ERROR:"):
+            "[ERROR:"):
         return "[ERROR]"
 
     text = str(raw_output).strip()

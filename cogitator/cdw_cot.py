@@ -24,7 +24,7 @@ class CDWCoT:
         max_tokens: Optional[int] = None,
         max_grad_norm: float = 1.0,
         init_pool_retries: int = 1,
-    ):
+    ) -> None:
         self.llm = llm
         self.pool_size = pool_size
         self.n_clusters = n_clusters
@@ -228,7 +228,7 @@ class CDWCoT:
         failed_indices: List[int] = []
         for i, res in enumerate(results):
             original_index = pool_candidates[i][0]
-            original_question = pool_candidates[i][1]
+            pool_candidates[i][1]
             if isinstance(res, Exception):
                 logger.error(f"Async generation task failed for index {original_index}: {res}")
                 failed_indices.append(original_index)
@@ -460,7 +460,7 @@ class CDWCoT:
                 initial_p: np.ndarray,
                 train_indices: List[int],
                 val_indices: List[int],
-            ):
+            ) -> None:
                 p = initial_p.copy()
                 if not self._is_valid_distribution(p):
                     logger.warning(
