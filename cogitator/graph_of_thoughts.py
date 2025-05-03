@@ -2,11 +2,12 @@ import asyncio
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 
 from .model import BaseLLM
+from .schemas import EvaluationResult, ExtractedAnswer
 from .utils import encode
 
 logger = logging.getLogger(__name__)
@@ -14,14 +15,12 @@ logger = logging.getLogger(__name__)
 
 def _strip_fences(text: str) -> str:
     t = text.strip()
-    # More robust regex to handle optional json language tag and varying whitespace
     match = re.match(r"```(?:json)?\s*(.*)\s*```", t, re.DOTALL | re.IGNORECASE)
     if match:
         return match.group(1).strip()
-    # Handle potential simple ``` fences without language tag
     if t.startswith("```") and t.endswith("```"):
         return t[3:-3].strip()
-    return t  # Return original if no fences found
+    return t
 
 
 class GraphOfThoughts:
@@ -41,25 +40,27 @@ class GraphOfThoughts:
             self.steps = steps
             self.parents = parents or []
             self.children: List["GraphOfThoughts._Node"] = []
-
-            try:
-                # Use a consistent separator for encoding
-                text_to_encode = " -> ".join(self.steps)
-                emb = encode([text_to_encode])[0]
-                self.embed = np.array(emb, dtype=float)
-            except Exception as e:
-                logger.error("Failed to encode node %d steps: %s", self.id, e)
-                self.embed = None
-
+            self.embed: Optional[np.ndarray] = None
             self.visits = 0
             self.score_sum = 0.0
             self.data = data
+
+            try:
+                text_to_encode = " -> ".join(self.steps)
+                if text_to_encode:
+                    emb_list = encode([text_to_encode])
+                    if len(emb_list) > 0 and emb_list[0] is not None:
+                        self.embed = np.array(emb_list[0], dtype=float)
+            except Exception as e:
+                logger.error("Failed to encode node %d steps: %s", self.id, e)
+                self.embed = None
 
         def score(self) -> float:
             return self.score_sum / self.visits if self.visits > 0 else 0.0
 
         def is_ancestor(self, potential_ancestor: "GraphOfThoughts._Node") -> bool:
-            """Check if potential_ancestor is an ancestor of this node."""
+            if not self.parents:
+                return False
             queue = list(self.parents)
             visited = {self.id}
             while queue:
@@ -96,6 +97,9 @@ class GraphOfThoughts:
             '"score" (int) and "justification" (str).\n'
             "Path:\n{steps}\n\nJSON Evaluation:"
         ),
+        final_answer_format: Literal["text", "json"] = "text",
+        max_tokens: Optional[int] = None,
+        seed: Optional[int] = None,
     ):
         self.llm = llm
         self.max_iters = max_iters
@@ -104,315 +108,461 @@ class GraphOfThoughts:
         self.merge_threshold = merge_threshold
         self.expand_prompt = expand_prompt
         self.eval_prompt = eval_prompt
+        self.final_answer_format = final_answer_format
+
+        self.max_tokens = max_tokens
+        self.seed = seed
 
     def _parse(self, raw: str) -> List[str]:
         raw_stripped = _strip_fences(raw)
         try:
-            arr = json.loads(raw_stripped)
-            if not isinstance(arr, list):
-                logger.warning("Parsed expansion is not a list: %r", arr)
+            parsed_obj = json.loads(raw_stripped)
+            thought_list: Optional[List[Any]] = None
+
+            if isinstance(parsed_obj, dict) and "thoughts" in parsed_obj:
+                if isinstance(parsed_obj["thoughts"], list):
+                    thought_list = parsed_obj["thoughts"]
+            elif isinstance(parsed_obj, list):
+                thought_list = parsed_obj
+            else:
+                logger.warning(
+                    f"Parsed JSON is not a list or dict with 'thoughts': {type(parsed_obj)}"
+                )
                 return []
-            # Ensure elements are strings before stripping
-            return [
-                str(s).strip() for s in arr if isinstance(s, (str, int, float)) and str(s).strip()
-            ][: self.num_branches]
+
+            if thought_list is not None:
+                valid_thoughts = [
+                    str(s).strip()
+                    for s in thought_list
+                    if isinstance(s, (str, int, float)) and str(s).strip()
+                ]
+                return valid_thoughts[: self.num_branches]
+            else:
+                return []
+
         except json.JSONDecodeError as e:
             logger.error(
-                "Failed to parse expansion JSON: %s\nStripped Text was: %s", e, raw_stripped[:200]
+                "Failed to parse expansion JSON: %s\nRaw Stripped: %s", e, raw_stripped[:200]
             )
             return []
-        except Exception as e:  # Catch other potential errors during parsing/list comprehension
-            logger.error(
-                "Unexpected error parsing expansion: %s\nStripped Text was: %s",
-                e,
-                raw_stripped[:200],
-            )
+        except Exception as e:
+            logger.error("Unexpected error during expansion parsing: %s", e, exc_info=True)
             return []
 
-    def _evaluate(self, steps: List[str]) -> float:
+    def _evaluate(self, steps: List[str], **kwargs) -> float:
+        if not steps:
+            return 0.0
         numbered = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(steps))
         prompt = self.eval_prompt.format(steps=numbered)
+        logger.debug(f"Evaluating node steps (sync) with prompt:\n{prompt}")
+
         try:
-            result = self.llm.generate_json(prompt)
-            if not isinstance(result, dict):
-                logger.warning("Evaluation result is not a dictionary: %s", result)
-                return 0.0
-            score = float(result.get("score", 0))
-            return max(0.0, min(1.0, (score - 1.0) / 9.0))
-        except (ValueError, TypeError) as e:
-            logger.error(
-                "Error converting evaluation score to float: %s. Result was: %s", e, result
+            result = self.llm.generate_json(
+                prompt,
+                response_model=EvaluationResult,
+                max_tokens=kwargs.pop("max_tokens", self.max_tokens),
+                seed=kwargs.pop("seed", self.seed),
+                **kwargs,
             )
-            return 0.0
+            if isinstance(result, EvaluationResult):
+                score = float(result.score)
+                normalized_score = max(0.0, min(1.0, (score - 1.0) / 9.0))
+                logger.debug(
+                    f"Evaluation score: {score} -> Normalized: {normalized_score:.3f}. Justification: {result.justification}"
+                )
+                return normalized_score
+            else:
+                logger.error(f"Evaluation returned unexpected type: {type(result)}")
+                return 0.0
         except Exception as e:
-            logger.error("Evaluation error: %s", e)
+            logger.error("Evaluation LLM call failed: %s", e, exc_info=True)
             return 0.0
 
     async def _evaluate_async(
-        self, steps: List[str], semaphore: Optional[asyncio.Semaphore] = None
+        self, steps: List[str], semaphore: Optional[asyncio.Semaphore] = None, **kwargs
     ) -> float:
+        if not steps:
+            return 0.0
         numbered = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(steps))
         prompt = self.eval_prompt.format(steps=numbered)
+        logger.debug(f"Evaluating node steps (async) with prompt:\n{prompt}")
+
+        local_kwargs = kwargs.copy()
+        gen_args = {
+            "response_model": EvaluationResult,
+            "max_tokens": local_kwargs.pop("max_tokens", self.max_tokens),
+            "seed": local_kwargs.pop("seed", self.seed),
+            **local_kwargs,
+        }
+
         try:
             if semaphore:
                 async with semaphore:
-                    result = await self.llm.generate_json_async(prompt)
+                    result = await self.llm.generate_json_async(prompt, **gen_args)
             else:
-                result = await self.llm.generate_json_async(prompt)
+                result = await self.llm.generate_json_async(prompt, **gen_args)
 
-            if not isinstance(result, dict):
-                logger.warning("Async evaluation result is not a dictionary: %s", result)
+            if isinstance(result, EvaluationResult):
+                score = float(result.score)
+                normalized_score = max(0.0, min(1.0, (score - 1.0) / 9.0))
+                logger.debug(
+                    f"Async evaluation score: {score} -> Normalized: {normalized_score:.3f}. Justification: {result.justification}"
+                )
+                return normalized_score
+            else:
+                logger.error(f"Async evaluation returned unexpected type: {type(result)}")
                 return 0.0
-            score = float(result.get("score", 0))
-            return max(0.0, min(1.0, (score - 1.0) / 9.0))
-        except (ValueError, TypeError) as e:
-            logger.error(
-                "Error converting async evaluation score to float: %s. Result was: %s", e, result
-            )
-            return 0.0
         except Exception as e:
-            logger.error("Async evaluation error: %s", e)
+            logger.error("Async evaluation LLM call failed: %s", e, exc_info=True)
             return 0.0
 
     def _find_similar_node(self, new_node: _Node, nodes_to_check: List[_Node]) -> Optional[_Node]:
         if new_node.embed is None:
-            return None
-        new_norm = np.linalg.norm(new_node.embed)
-        if new_norm == 0:
+            logger.debug(f"Skipping similarity check for node {new_node.id} (no embedding).")
             return None
 
+        new_norm = np.linalg.norm(new_node.embed)
+        if new_norm == 0:
+            logger.debug(f"Skipping similarity check for node {new_node.id} (zero norm embedding).")
+            return None
+
+        logger.debug(
+            f"Checking similarity for node {new_node.id} against {len(nodes_to_check)} nodes."
+        )
         for other in nodes_to_check:
             if other.id == new_node.id or other.embed is None:
                 continue
 
             other_norm = np.linalg.norm(other.embed)
-            if other_norm == 0:
+            if other_norm == 0 or new_node.is_ancestor(other):
                 continue
 
-            # Avoid merging with own ancestors
-            if new_node.is_ancestor(other):
+            try:
+                dot_product = np.dot(new_node.embed.flatten(), other.embed.flatten())
+                sim = float(dot_product / (new_norm * other_norm))
+            except ValueError as e:
+                logger.warning(
+                    f"Error calculating similarity between node {new_node.id} and {other.id}: {e}"
+                )
                 continue
-
-            sim = float(np.dot(new_node.embed, other.embed) / (new_norm * other_norm))
 
             if sim > self.merge_threshold:
+                logger.info(
+                    f"Merging node {new_node.id} into similar node {other.id} (similarity: {sim:.3f})"
+                )
                 return other
+
         return None
 
-    def run(self, question: str) -> str:
+    def run(self, question: str, **kwargs) -> str:
         GraphOfThoughts._Node._id_counter = 0
         root = self._Node([question])
-        frontier: List[GraphOfThoughts._Node] = [root]
-        all_nodes: Dict[int, GraphOfThoughts._Node] = {root.id: root}
+        frontier = [root]
+        all_nodes = {root.id: root}
 
-        for it in range(self.max_iters):
-            logger.debug("GoT iter %d/%d, frontier=%d", it + 1, self.max_iters, len(frontier))
-            candidates: List[GraphOfThoughts._Node] = []
+        logger.info(
+            f"Starting GoT run. Max iterations: {self.max_iters}, Beam width: {self.beam_width}"
+        )
+
+        for iter_num in range(self.max_iters):
+            logger.info(f"--- GoT Iteration {iter_num + 1}/{self.max_iters} ---")
+            logger.debug(f"Frontier size: {len(frontier)}. Nodes: {[n.id for n in frontier]}")
+            if not frontier:
+                logger.info("Frontier is empty. Stopping iterations.")
+                break
+
             expansion_results: Dict[int, List[str]] = {}
-
-            # --- Expansion Phase ---
+            logger.info(f"Expanding {len(frontier)} nodes in the frontier...")
             for node in frontier:
                 ctx = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(node.steps))
                 prompt = self.expand_prompt.format(k=self.num_branches, ctx=ctx)
+                exps: List[str] = []
+
                 try:
-                    raw = self.llm.generate(prompt)
+                    local_kwargs = kwargs.copy()
+                    gen_seed = (self.seed + iter_num + node.id) if self.seed is not None else None
+                    raw = self.llm.generate(
+                        prompt,
+                        max_tokens=local_kwargs.pop("max_tokens", self.max_tokens),
+                        seed=gen_seed,
+                        **local_kwargs,
+                    )
                     exps = self._parse(raw)
-                    expansion_results[node.id] = exps
+                    logger.debug(f"Node {node.id} expanded into {len(exps)} thoughts.")
                 except Exception as e:
-                    logger.error("Expansion failed for node %d: %s", node.id, e)
-                    expansion_results[node.id] = []  # Ensure entry exists
+                    logger.error(f"Expansion failed for node {node.id}: {e}", exc_info=True)
+                    exps = []
 
-            # --- Candidate Generation & Merging ---
-            newly_added_nodes: List[GraphOfThoughts._Node] = []
+                expansion_results[node.id] = exps
+
+            newly_added: List[GraphOfThoughts._Node] = []
             for node in frontier:
-                parent_node = all_nodes[node.id]  # Get node from central dict
-                exps = expansion_results.get(parent_node.id, [])
-                for step in exps:
-                    new_steps = parent_node.steps + [step]
-                    new_node = self._Node(new_steps, parents=[parent_node])
+                for step in expansion_results.get(node.id, []):
+                    new_node = self._Node(node.steps + [step], parents=[node])
+                    similar = self._find_similar_node(new_node, list(all_nodes.values()))
 
-                    # Check for similarity *before* adding to graph structures
-                    # Compare against all nodes created so far for potential merging
-                    similar_node = self._find_similar_node(new_node, list(all_nodes.values()))
+                    if similar:
+                        if node not in similar.parents:
+                            similar.parents.append(node)
+                            logger.debug(
+                                f"Added node {node.id} as parent to existing node {similar.id}"
+                            )
+                        continue
+                    else:
+                        node.children.append(new_node)
+                        all_nodes[new_node.id] = new_node
+                        newly_added.append(new_node)
+                        logger.debug(f"Added new node {new_node.id} from parent {node.id}")
 
-                    if similar_node:
-                        logger.debug(
-                            "Discarding node %d (similar to %d)", new_node.id, similar_node.id
-                        )
-                        # Optional: Link parent to the existing similar node if not already linked?
-                        if new_node not in similar_node.children:  # Avoid duplicate links
-                            parent_node.children.append(similar_node)  # Link parent to existing
-                        # Make sure the similar node knows about this parent
-                        if parent_node not in similar_node.parents:
-                            similar_node.parents.append(parent_node)
-                        # Do not add the new_node to candidates or all_nodes
-                        continue  # Skip to next step/expansion
-
-                    # If not merged/discarded, add to graph
-                    parent_node.children.append(new_node)
-                    all_nodes[new_node.id] = new_node
-                    newly_added_nodes.append(new_node)
-
-            candidates.extend(newly_added_nodes)
-
-            if not candidates:
-                logger.debug("No new candidates generated or all were merged; stopping early.")
+            if not newly_added:
+                logger.info("No new nodes were added in this iteration. Stopping.")
                 break
 
-            # --- Evaluation & Pruning ---
-            scored_candidates: List[Tuple[float, GraphOfThoughts._Node]] = []
-            for n in candidates:
-                # Ensure we evaluate the node from the central dictionary
-                node_to_eval = all_nodes[n.id]
-                s = self._evaluate(node_to_eval.steps)
-                node_to_eval.visits += 1
-                node_to_eval.score_sum += s
-                scored_candidates.append((node_to_eval.score(), node_to_eval))
+            logger.info(f"Evaluating {len(newly_added)} newly added nodes...")
+            scored_nodes: List[Tuple[float, GraphOfThoughts._Node]] = []
+            for n in newly_added:
+                node_score = self._evaluate(n.steps, **kwargs)
+                n.visits += 1
+                n.score_sum += node_score
+                scored_nodes.append((n.score(), n))
 
-            scored_candidates.sort(key=lambda x: x[0], reverse=True)
-            frontier = [n for _, n in scored_candidates[: self.beam_width]]
+            scored_nodes.sort(key=lambda x: x[0], reverse=True)
+            frontier = [node for score, node in scored_nodes[: self.beam_width]]
+            logger.info(
+                f"Selected top {len(frontier)} nodes for next frontier (Beam Width: {self.beam_width})."
+            )
 
             if not frontier:
-                logger.debug("Frontier emptied by pruning; stopping.")
+                logger.info("Frontier became empty after pruning. Stopping.")
                 break
 
-        # --- Final Answer Generation ---
         final_candidates = frontier or list(all_nodes.values())
         if not final_candidates:
-            logger.error("No nodes available to generate final answer.")
-            return "Error: No reasoning paths found."
+            logger.error("No candidate nodes found at the end of GoT run.")
+            return "Error: No reasoning paths generated."
 
         best_node = max(final_candidates, key=lambda n: n.score())
-        reasoning = best_node.steps[1:]
-        numbered = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(reasoning))
-        final_prompt = f"Given reasoning steps:\n{numbered}\n\nAnswer the question: {question}"
+        logger.info(f"Selected best node: {best_node}")
+
+        reasoning = (
+            best_node.steps[1:]
+            if len(best_node.steps) > 1
+            else ["No intermediate steps generated."]
+        )
+        numbered_reasoning = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(reasoning))
+        final_prompt = (
+            f"Given reasoning steps:\n{numbered_reasoning}\n\nAnswer the question: {question}"
+        )
+        logger.debug(f"Final prompt:\n{final_prompt}")
 
         try:
-            return self.llm.generate(final_prompt).strip()
+            local_kwargs_final = kwargs.copy()
+            if self.final_answer_format == "json":
+                json_req = (
+                    final_prompt
+                    + '\n\nReturn exactly one JSON object with a single key "final_answer" whose value is the answer string.\n\nJSON Answer:'
+                )
+                parsed = self.llm.generate_json(
+                    json_req,
+                    response_model=ExtractedAnswer,
+                    max_tokens=local_kwargs_final.pop("max_tokens", self.max_tokens),
+                    seed=local_kwargs_final.pop("seed", self.seed),
+                    **local_kwargs_final,
+                )
+                return parsed.final_answer.strip()
+            else:
+                return self.llm.generate(
+                    final_prompt,
+                    max_tokens=local_kwargs_final.pop("max_tokens", self.max_tokens),
+                    seed=local_kwargs_final.pop("seed", self.seed),
+                    **local_kwargs_final,
+                ).strip()
         except Exception as e:
-            logger.error("Final answer generation failed: %s", e)
+            logger.error("Final answer generation failed: %s", e, exc_info=True)
             return "Error generating final answer."
 
-    async def run_async(self, question: str, semaphore: Optional[asyncio.Semaphore] = None) -> str:
+    async def run_async(
+        self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs
+    ) -> str:
         GraphOfThoughts._Node._id_counter = 0
         root = self._Node([question])
-        frontier: List[GraphOfThoughts._Node] = [root]
-        all_nodes: Dict[int, GraphOfThoughts._Node] = {root.id: root}
+        frontier = [root]
+        all_nodes = {root.id: root}
 
-        for it in range(self.max_iters):
-            logger.debug("GoT async iter %d/%d, frontier=%d", it + 1, self.max_iters, len(frontier))
-            expansion_tasks = []
-            node_map: Dict[int, GraphOfThoughts._Node] = {
-                n.id: n for n in frontier
-            }  # Map task ID back to node
+        logger.info(
+            f"Starting GoT run (async). Max iterations: {self.max_iters}, Beam width: {self.beam_width}"
+        )
 
-            # --- Async Expansion Phase ---
-            async def expand_node_task(node_id: int):
-                node = node_map[node_id]
+        for iter_num in range(self.max_iters):
+            logger.info(f"--- GoT Iteration {iter_num + 1}/{self.max_iters} (async) ---")
+            logger.debug(f"Frontier size: {len(frontier)}. Nodes: {[n.id for n in frontier]}")
+            if not frontier:
+                logger.info("Frontier is empty. Stopping iterations.")
+                break
+
+            logger.info(f"Expanding {len(frontier)} nodes in the frontier asynchronously...")
+
+            async def expand_task(node: GraphOfThoughts._Node) -> Tuple[int, List[str]]:
                 ctx = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(node.steps))
                 prompt = self.expand_prompt.format(k=self.num_branches, ctx=ctx)
+                exps: List[str] = []
+
                 try:
+                    local_kwargs = kwargs.copy()
+                    gen_seed = (self.seed + iter_num + node.id) if self.seed is not None else None
+                    gen_args = {
+                        "max_tokens": local_kwargs.pop("max_tokens", self.max_tokens),
+                        "seed": gen_seed,
+                        **local_kwargs,
+                    }
                     if semaphore:
                         async with semaphore:
-                            raw = await self.llm.generate_async(prompt)
+                            raw = await self.llm.generate_async(prompt, **gen_args)
                     else:
-                        raw = await self.llm.generate_async(prompt)
-                    return node_id, self._parse(raw)
+                        raw = await self.llm.generate_async(prompt, **gen_args)
+                    exps = self._parse(raw)
+                    logger.debug(f"Node {node.id} expanded into {len(exps)} thoughts (async).")
                 except Exception as e:
-                    logger.error("Async expansion failed for node %d: %s", node_id, e)
-                    return node_id, []
+                    logger.error(f"Async expansion failed for node {node.id}: {e}", exc_info=True)
+                    exps = []
 
-            for node in frontier:
-                expansion_tasks.append(expand_node_task(node.id))
+                return node.id, exps
 
-            expansion_results_list = await asyncio.gather(*expansion_tasks)
-            expansion_results: Dict[int, List[str]] = dict(expansion_results_list)
+            results = await asyncio.gather(
+                *(expand_task(n) for n in frontier), return_exceptions=True
+            )
+            expansion_results: Dict[int, List[str]] = {}
+            for i, res in enumerate(results):
+                node_id = frontier[i].id
+                if isinstance(res, Exception):
+                    logger.error(f"Async expansion task failed for node {node_id}: {res}")
+                    expansion_results[node_id] = []
+                elif isinstance(res, tuple) and len(res) == 2:
+                    expansion_results[res[0]] = res[1]
+                else:
+                    logger.error(
+                        f"Unexpected result type from expand_task for node {node_id}: {type(res)}"
+                    )
+                    expansion_results[node_id] = []
 
-            # --- Candidate Generation & Merging ---
-            newly_added_nodes: List[GraphOfThoughts._Node] = []
-            for node_id, exps in expansion_results.items():
-                parent_node = all_nodes[node_id]  # Get node from central dict
-                for step in exps:
-                    new_steps = parent_node.steps + [step]
-                    new_node = self._Node(new_steps, parents=[parent_node])
+            newly_added: List[GraphOfThoughts._Node] = []
+            for nid, steps in expansion_results.items():
+                parent = all_nodes.get(nid)
+                if parent is None:
+                    logger.warning(f"Parent node {nid} not found, cannot add children.")
+                    continue
 
-                    similar_node = self._find_similar_node(new_node, list(all_nodes.values()))
-                    if similar_node:
-                        logger.debug(
-                            "Async discard node %d (similar to %d)", new_node.id, similar_node.id
-                        )
-                        if new_node not in similar_node.children:
-                            parent_node.children.append(similar_node)
-                        if parent_node not in similar_node.parents:
-                            similar_node.parents.append(parent_node)
+                for step in steps:
+                    new_node = self._Node(parent.steps + [step], parents=[parent])
+                    similar = self._find_similar_node(new_node, list(all_nodes.values()))
+                    if similar:
+                        if parent not in similar.parents:
+                            similar.parents.append(parent)
                         continue
-
-                    parent_node.children.append(new_node)
+                    parent.children.append(new_node)
                     all_nodes[new_node.id] = new_node
-                    newly_added_nodes.append(new_node)
+                    newly_added.append(new_node)
 
-            if not newly_added_nodes:
-                logger.debug(
-                    "No new async candidates generated or all were merged; stopping early."
-                )
+            if not newly_added:
+                logger.info("No new nodes were added in this iteration (async). Stopping.")
                 break
 
-            # --- Async Evaluation & Pruning ---
-            eval_tasks = []
-            candidate_map: Dict[int, GraphOfThoughts._Node] = {n.id: n for n in newly_added_nodes}
+            logger.info(f"Evaluating {len(newly_added)} newly added nodes asynchronously...")
 
-            async def evaluate_node_task(node_id: int):
-                node = candidate_map[node_id]
-                score = await self._evaluate_async(node.steps, semaphore)
-                return node_id, score
+            async def eval_task(node: GraphOfThoughts._Node) -> Tuple[int, float]:
+                node_score = await self._evaluate_async(node.steps, semaphore, **kwargs)
+                return node.id, node_score
 
-            for node in newly_added_nodes:
-                eval_tasks.append(evaluate_node_task(node.id))
+            score_results = await asyncio.gather(
+                *(eval_task(n) for n in newly_added), return_exceptions=True
+            )
 
-            eval_results = await asyncio.gather(*eval_tasks)
+            scored_nodes: List[Tuple[float, GraphOfThoughts._Node]] = []
+            processed_ids = set()
+            for i, res in enumerate(score_results):
+                node_id = newly_added[i].id
+                processed_ids.add(node_id)
+                node = all_nodes.get(node_id)
+                if node is None:
+                    continue
 
-            scored_candidates: List[Tuple[float, GraphOfThoughts._Node]] = []
-            for node_id, score in eval_results:
-                node_to_update = all_nodes[node_id]  # Update the node in the central dict
-                node_to_update.visits += 1
-                node_to_update.score_sum += score
-                scored_candidates.append((node_to_update.score(), node_to_update))
+                if isinstance(res, Exception):
+                    logger.error(f"Async evaluation task failed for node {node_id}: {res}")
+                    node_score = 0.0
+                elif isinstance(res, tuple) and len(res) == 2:
+                    node_score = res[1]
+                else:
+                    logger.error(
+                        f"Unexpected result type from eval_task for node {node_id}: {type(res)}"
+                    )
+                    node_score = 0.0
 
-            # Add previously existing frontier nodes that weren't re-evaluated this round
-            # Their scores remain unchanged but they compete in pruning
-            processed_ids = {nid for nid, _ in eval_results}
-            for node in frontier:
-                if node.id not in processed_ids:
-                    # Ensure we use the potentially updated node from all_nodes
-                    current_node_state = all_nodes[node.id]
-                    scored_candidates.append((current_node_state.score(), current_node_state))
+                node.visits += 1
+                node.score_sum += node_score
+                scored_nodes.append((node.score(), node))
 
-            scored_candidates.sort(key=lambda x: x[0], reverse=True)
-            frontier = [n for _, n in scored_candidates[: self.beam_width]]
+            scored_nodes.sort(key=lambda x: x[0], reverse=True)
+            frontier = [node for score, node in scored_nodes[: self.beam_width]]
+            logger.info(
+                f"Selected top {len(frontier)} nodes for next frontier (Async Beam Width: {self.beam_width})."
+            )
 
             if not frontier:
-                logger.debug("Async frontier emptied by pruning; stopping.")
+                logger.info("Frontier became empty after pruning (async). Stopping.")
                 break
 
-        # --- Final Answer Generation ---
         final_candidates = frontier or list(all_nodes.values())
         if not final_candidates:
-            logger.error("No async nodes available to generate final answer.")
-            return "Error: No reasoning paths found."
+            logger.error("No candidate nodes found at the end of GoT run (async).")
+            return "Error: No reasoning paths generated."
 
         best_node = max(final_candidates, key=lambda n: n.score())
-        reasoning = best_node.steps[1:]
-        numbered = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(reasoning))
-        final_prompt = f"Given reasoning steps:\n{numbered}\n\nAnswer the question: {question}"
+        logger.info(f"Selected best node (async): {best_node}")
+
+        reasoning = (
+            best_node.steps[1:]
+            if len(best_node.steps) > 1
+            else ["No intermediate steps generated."]
+        )
+        numbered_reasoning = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(reasoning))
+        final_prompt = (
+            f"Given reasoning steps:\n{numbered_reasoning}\n\nAnswer the question: {question}"
+        )
+        logger.debug(f"Final prompt (async):\n{final_prompt}")
 
         try:
-            if semaphore:
-                async with semaphore:
-                    return (await self.llm.generate_async(final_prompt)).strip()
-            else:
-                return (await self.llm.generate_async(final_prompt)).strip()
-        except Exception as e:
-            logger.error("Final async answer generation failed: %s", e)
-            return "Error generating final async answer."
+            local_kwargs_final = kwargs.copy()
+            final_seed = local_kwargs_final.pop("seed", self.seed)
+            final_max_tokens = local_kwargs_final.pop("max_tokens", self.max_tokens)
 
-    __call__ = run
+            if self.final_answer_format == "json":
+                json_req = (
+                    final_prompt
+                    + '\n\nReturn exactly one JSON object with a single key "final_answer" whose value is the answer string.\n\nJSON Answer:'
+                )
+                gen_args = {
+                    "response_model": ExtractedAnswer,
+                    "max_tokens": final_max_tokens,
+                    "seed": final_seed,
+                    **local_kwargs_final,
+                }
+                if semaphore:
+                    async with semaphore:
+                        parsed = await self.llm.generate_json_async(json_req, **gen_args)
+                else:
+                    parsed = await self.llm.generate_json_async(json_req, **gen_args)
+                return parsed.final_answer.strip()
+            else:
+                gen_args = {
+                    "max_tokens": final_max_tokens,
+                    "seed": final_seed,
+                    **local_kwargs_final,
+                }
+                if semaphore:
+                    async with semaphore:
+                        return (await self.llm.generate_async(final_prompt, **gen_args)).strip()
+                else:
+                    return (await self.llm.generate_async(final_prompt, **gen_args)).strip()
+        except Exception as e:
+            logger.error("Final async answer generation failed: %s", e, exc_info=True)
+            return "Error generating final async answer."

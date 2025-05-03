@@ -2,33 +2,33 @@ import argparse
 import asyncio
 import logging
 import os
-from typing import Any, Callable, Coroutine
+from typing import Any, Callable, Coroutine, Optional
 
-from cogitator.model import BaseLLM, OllamaLLM, OpenAILLM
+from cogitator import BaseLLM, OllamaLLM, OpenAILLM
+
+logger = logging.getLogger(__name__)
 
 
 def setup_logging():
     logging.basicConfig(
-        level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("sentence_transformers.SentenceTransformer").setLevel(logging.WARNING)
 
 
-def get_llm(provider: str, openai_key: str, ollama_model: str) -> BaseLLM:
+def get_llm(provider: str, model_name: str, openai_key: Optional[str] = None) -> BaseLLM:
+    logger.info(f"Initializing LLM for examples: provider={provider}, model={model_name}")
     if provider == "openai":
-        if not openai_key:
-            raise ValueError(
-                "OPENAI_API_KEY environment variable or --openai-key argument is required for OpenAI provider"
-            )
         key = openai_key or os.getenv("OPENAI_API_KEY")
         if not key:
             raise ValueError(
-                "OpenAI API key must be provided via --openai-key or OPENAI_API_KEY environment variable."
+                "OpenAI API key must be provided via --openai-key or "
+                "OPENAI_API_KEY environment variable."
             )
-        return OpenAILLM(api_key=key, model="gpt-4.1-nano")
+        return OpenAILLM(api_key=key, model=model_name)
     elif provider == "ollama":
-        return OllamaLLM(model=ollama_model)
+        return OllamaLLM(model=model_name)
     else:
         raise ValueError(f"Unsupported provider: {provider}")
 
@@ -38,21 +38,32 @@ def parse_common_args(description: str) -> argparse.Namespace:
     parser.add_argument(
         "--provider",
         choices=["openai", "ollama"],
-        default="openai",
-        help="LLM provider to use (default: openai)",
+        default="ollama",
+        help="LLM provider to use (default: ollama)",
+    )
+    parser.add_argument(
+        "--model-name",
+        default=None,
+        help="Name of the model (default: 'gemma3:4b' for ollama, 'gpt-4o-mini' for openai)",
     )
     parser.add_argument(
         "--openai-key",
         default=None,
-        help="OpenAI API key (overrides OPENAI_API_KEY environment variable if set)",
-    )
-    parser.add_argument(
-        "--ollama-model", default="gemma3", help="Ollama model name (default: gemma3)"
+        help="OpenAI API key (reads OPENAI_API_KEY env var if not set)",
     )
     parser.add_argument(
         "--use-async", action="store_true", help="Run the asynchronous version of the example"
     )
-    return parser.parse_args()
+
+    args = parser.parse_args()
+
+    if not args.model_name:
+        args.model_name = "gpt-4o-mini" if args.provider == "openai" else "gemma3:4b"
+        logger.info(
+            f"Model name not specified, using default for {args.provider}: {args.model_name}"
+        )
+
+    return args
 
 
 def run_main(
@@ -61,7 +72,6 @@ def run_main(
     description: str,
 ):
     args = parse_common_args(description)
-    setup_logging()
 
     if args.use_async:
         asyncio.run(main_async_func(args))

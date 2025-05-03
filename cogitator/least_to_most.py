@@ -1,9 +1,12 @@
 import asyncio
 import json
 import logging
-from typing import List, Optional, Tuple
+from typing import List, Literal, Optional, Tuple
+
+from pydantic import ValidationError
 
 from .model import BaseLLM
+from .schemas import ExtractedAnswer, LTMDecomposition
 
 logger = logging.getLogger(__name__)
 
@@ -13,11 +16,14 @@ class LeastToMost:
         self,
         llm: BaseLLM,
         few_shot_examples: Optional[List[Tuple[str, List[str]]]] = None,
+        *,
+        intermediate_output_format: Literal["text", "json"] = "text",
         decompose_prompt_template: str = (
             "Decompose the main question into a sequence of simpler subquestions "
             "that must be answered sequentially to solve the main question. "
-            "Return the subquestions as a JSON list of strings.\n\n"
-            "Main Question: {question}\n\nJSON Subquestions:"
+            "Return the result as a JSON object with a single key 'subquestions' containing a list of strings.\n\n"
+            "Main Question: {question}\n\n"
+            "JSON Output:"
         ),
         solve_prompt_template: str = (
             "Previous Context:\n{context}\n\n"
@@ -32,8 +38,11 @@ class LeastToMost:
             "Original Main Question: {question}\n\nFinal Answer:"
         ),
         max_subqs: int = 10,
+        max_tokens: Optional[int] = None,
+        seed: Optional[int] = None,
     ):
         self.llm = llm
+        self.intermediate_output_format = intermediate_output_format
         self.max_subqs = max_subqs
 
         if few_shot_examples is None:
@@ -62,60 +71,97 @@ class LeastToMost:
         self.solve_prompt_template = solve_prompt_template
         self.final_answer_prompt_template = final_answer_prompt_template
 
+        self.max_tokens = max_tokens
+        self.seed = seed
+
     def _build_prefix(self) -> str:
         prefix = ""
         for ex_q, ex_subs in self.examples:
             prefix += f"Main Question: {ex_q}\nJSON Subquestions: {json.dumps(ex_subs)}\n\n"
         return prefix
 
-    def decompose(self, question: str) -> List[str]:
+    def decompose(self, question: str, **kwargs) -> List[str]:
         prompt = self._build_prefix() + self.decompose_prompt_template.format(question=question)
         logger.debug("LTM Decompose Prompt:\n%s", prompt)
         try:
-            arr = self.llm.generate_json(prompt)
-            logger.debug("LTM Decompose Raw Result: %s", arr)
+            result = self.llm.generate_json(
+                prompt,
+                response_model=LTMDecomposition,
+                max_tokens=kwargs.pop("max_tokens", self.max_tokens),
+                seed=kwargs.pop("seed", self.seed),
+                **kwargs,
+            )
+            arr = result.subquestions or []
+        except (json.JSONDecodeError, ValidationError) as ve:
+            logger.error(
+                "Decomposition JSON validation/decode failed for question '%s': %s",
+                question,
+                ve,
+                exc_info=True,
+            )
+            raise ValueError(
+                f"Failed to decompose question due to LLM response error: {type(ve).__name__}"
+            ) from ve
         except Exception as e:
             logger.error(
-                "Decomposition JSON call failed for question '%s': %s", question, e, exc_info=True
+                "Decomposition LLM call failed for question '%s': %s", question, e, exc_info=True
             )
-            raise ValueError(f"Failed to decompose question due to LLM error: {e}") from e
+            raise ValueError(
+                f"Failed to decompose question due to LLM error: {type(e).__name__}"
+            ) from e
 
-        if not isinstance(arr, list):
-            raise ValueError(f"Decomposition LLM response was not a list, got: {type(arr)}")
-        subs = [str(s).strip() for s in arr if isinstance(s, (str, int, float)) and str(s).strip()]
+        subs = [s.strip() for s in arr if s and isinstance(s, str)]
         if not subs:
-            raise ValueError("LLM returned empty or invalid subquestions list after parsing.")
+            raise ValueError("LLM returned empty subquestions list after validation.")
         return subs[: self.max_subqs]
 
     async def decompose_async(
-        self, question: str, semaphore: Optional[asyncio.Semaphore] = None
+        self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs
     ) -> List[str]:
         prompt = self._build_prefix() + self.decompose_prompt_template.format(question=question)
         logger.debug("LTM Async Decompose Prompt:\n%s", prompt)
+
+        local_kwargs = kwargs.copy()
+        gen_args = {
+            "response_model": LTMDecomposition,
+            "max_tokens": local_kwargs.pop("max_tokens", self.max_tokens),
+            "seed": local_kwargs.pop("seed", self.seed),
+            **local_kwargs,
+        }
         try:
             if semaphore:
                 async with semaphore:
-                    arr = await self.llm.generate_json_async(prompt)
+                    result = await self.llm.generate_json_async(prompt, **gen_args)
             else:
-                arr = await self.llm.generate_json_async(prompt)
-            logger.debug("LTM Async Decompose Raw Result: %s", arr)
+                result = await self.llm.generate_json_async(prompt, **gen_args)
+            arr = result.subquestions or []
+        except (json.JSONDecodeError, ValidationError) as ve:
+            logger.error(
+                "Async decomposition JSON validation/decode failed for question '%s': %s",
+                question,
+                ve,
+                exc_info=True,
+            )
+            raise ValueError(
+                f"Async decomposition failed due to LLM response error: {type(ve).__name__}"
+            ) from ve
         except Exception as e:
             logger.error(
-                "Async decomposition JSON call failed for question '%s': %s",
+                "Async decomposition LLM call failed for question '%s': %s",
                 question,
                 e,
                 exc_info=True,
             )
-            raise ValueError(f"Async decomposition failed due to LLM error: {e}") from e
+            raise ValueError(
+                f"Async decomposition failed due to LLM error: {type(e).__name__}"
+            ) from e
 
-        if not isinstance(arr, list):
-            raise ValueError(f"Async decomposition LLM response was not a list, got: {type(arr)}")
-        subs = [str(s).strip() for s in arr if isinstance(s, (str, int, float)) and str(s).strip()]
+        subs = [s.strip() for s in arr if s and isinstance(s, str)]
         if not subs:
-            raise ValueError("Async LLM returned empty or invalid subquestions list after parsing.")
+            raise ValueError("Async LLM returned empty subquestions list after validation.")
         return subs[: self.max_subqs]
 
-    def solve(self, question: str, subqs: List[str]) -> List[Tuple[str, str]]:
+    def solve(self, question: str, subqs: List[str], **kwargs) -> List[Tuple[str, str]]:
         solved: List[Tuple[str, str]] = []
         for i, sub in enumerate(subqs):
             context = (
@@ -125,148 +171,164 @@ class LeastToMost:
             )
             prompt = self.solve_prompt_template.format(context=context, subquestion=sub)
             logger.debug("LTM Solve Subquestion %d Prompt:\n%s", i + 1, prompt)
+
             try:
-                ans = self.llm.generate(prompt).strip()
-                logger.debug("LTM Solve Subquestion %d Raw Answer: '%s'", i + 1, ans)
+                local_kwargs = kwargs.copy()
+                gen_args = {
+                    "max_tokens": local_kwargs.pop("max_tokens", self.max_tokens),
+                    "seed": local_kwargs.pop("seed", self.seed),
+                    **local_kwargs,
+                }
+                if self.intermediate_output_format == "json":
+                    json_p = (
+                        prompt
+                        + '\n\nReturn exactly one JSON object with key "final_answer" whose value is the answer.\n\nJSON Answer:'
+                    )
+                    parsed = self.llm.generate_json(
+                        json_p, response_model=ExtractedAnswer, **gen_args
+                    )
+                    ans = str(parsed.final_answer).strip()
+                else:
+                    ans = self.llm.generate(prompt, **gen_args).strip()
                 if not ans:
-                    logger.warning("Empty answer returned for subquestion: %s", sub)
                     ans = "[No Answer Found]"
             except Exception as e:
-                logger.error("Error solving subquestion '%s': %s", sub, e, exc_info=True)
-                ans = "[Error Solving]"
+                logger.error("Error solving '%s': %s", sub, e, exc_info=True)
+                ans = "[Error]"
             solved.append((sub, ans))
         return solved
 
     async def solve_async(
-        self, question: str, subqs: List[str], semaphore: Optional[asyncio.Semaphore] = None
+        self,
+        question: str,
+        subqs: List[str],
+        semaphore: Optional[asyncio.Semaphore] = None,
+        **kwargs,
     ) -> List[Tuple[str, str]]:
         solved: List[Tuple[str, str]] = []
-        tasks = []
 
-        async def solve_single_sub(sub_idx: int, sub_q: str, current_context: str):
-            prompt = self.solve_prompt_template.format(context=current_context, subquestion=sub_q)
-            logger.debug("LTM Async Solve Subquestion %d Prompt:\n%s", sub_idx + 1, prompt)
+        async def one(i: int, sq: str, ctx: str) -> Tuple[int, str, str]:
+            prompt = self.solve_prompt_template.format(context=ctx, subquestion=sq)
+            logger.debug("LTM Async Solve Subquestion %d Prompt:\n%s", i + 1, prompt)
+            ans = "[Error]"
             try:
-                if semaphore:
-                    async with semaphore:
-                        ans = await self.llm.generate_async(prompt)
+                local_kwargs = kwargs.copy()
+                gen_args = {
+                    "max_tokens": local_kwargs.pop("max_tokens", self.max_tokens),
+                    "seed": local_kwargs.pop("seed", self.seed),
+                    **local_kwargs,
+                }
+                if self.intermediate_output_format == "json":
+                    json_p = (
+                        prompt
+                        + '\n\nReturn exactly one JSON object with key "final_answer" whose value is the answer.\n\nJSON Answer:'
+                    )
+                    gen_args["response_model"] = ExtractedAnswer
+                    if semaphore:
+                        async with semaphore:
+                            parsed = await self.llm.generate_json_async(json_p, **gen_args)
+                    else:
+                        parsed = await self.llm.generate_json_async(json_p, **gen_args)
+                    ans = str(parsed.final_answer).strip()
                 else:
-                    ans = await self.llm.generate_async(prompt)
-                logger.debug("LTM Async Solve Subquestion %d Raw Answer: '%s'", sub_idx + 1, ans)
-                ans_stripped = ans.strip()
-                if not ans_stripped:
-                    logger.warning("Empty answer returned for async subquestion: %s", sub_q)
-                    ans_stripped = "[No Answer Found]"
-                return sub_idx, sub_q, ans_stripped
-            except Exception as e:
-                logger.error("Async error solving subquestion '%s': %s", sub_q, e, exc_info=True)
-                return sub_idx, sub_q, "[Error Solving Async]"
+                    if semaphore:
+                        async with semaphore:
+                            ans = await self.llm.generate_async(prompt, **gen_args)
+                    else:
+                        ans = await self.llm.generate_async(prompt, **gen_args)
+                    ans = ans.strip()
 
-        current_context_base = "Previously solved:\n"
-        # IMPORTANT: Running solve_async sequentially to preserve context dependency
-        for i, sub in enumerate(subqs):
-            context_for_task = (
-                current_context_base + "\n".join(f"Q: {q}\nA: {a}" for q, a in solved) + "\n"
-                if solved
-                else "None."
+                if not ans:
+                    ans = "[No Answer Found]"
+            except Exception as e:
+                logger.error("Async error solving '%s': %s", sq, e, exc_info=True)
+                ans = "[Error]"
+            return i, sq, ans
+
+        current_context = "None."
+        for i, sq in enumerate(subqs):
+            idx, sqr, ansr = await one(i, sq, current_context)
+            solved.append((sqr, ansr))
+            current_context = (
+                "Previously solved:\n" + "\n".join(f"Q: {q}\nA: {a}" for q, a in solved) + "\n"
             )
-            sub_idx, sub_q_res, ans_res = await solve_single_sub(i, sub, context_for_task)
-            # Check index just in case, though it should match i
-            if sub_idx == i:
-                solved.append((sub_q_res, ans_res))
-            else:
-                logger.error(
-                    "Subquestion index mismatch during async solve: expected %d, got %d", i, sub_idx
-                )
-                # Decide how to handle - skip? add placeholder? For now, add placeholder
-                solved.append((sub, "[Error - Index Mismatch]"))
 
         return solved
 
-    def answer(self, question: str) -> str:
+    def run(self, question: str, **kwargs) -> str:
+        final_answer = "[Error: Processing failed]"
         try:
-            subqs = self.decompose(question)
-            logger.debug("LTM Decomposed Subquestions for '%s': %s", question, subqs)
-        except ValueError as e:
-            logger.error(
-                "Decomposition failed for '%s': %s", question, e, exc_info=False
-            )  # Don't need full stack trace here
-            return f"Error: could not decompose question ({e})"
-        except Exception as e:
-            logger.error(
-                "Unexpected error during decomposition for '%s': %s", question, e, exc_info=True
-            )
-            return f"Error: unexpected issue during decomposition ({e})"
+            subs = self.decompose(question, **kwargs)
+            solved = self.solve(question, subs, **kwargs)
 
-        if not subqs:
-            logger.error("No subquestions generated for '%s'", question)
-            return "Error: no subquestions generated."
+            steps = "\n".join(f"{i + 1}. Q: {q}\n   A: {a}" for i, (q, a) in enumerate(solved))
+            prompt = self.final_answer_prompt_template.format(solved_steps=steps, question=question)
+            logger.debug("LTM Final Answer Prompt:\n%s", prompt)
 
-        try:
-            solved = self.solve(question, subqs)
-            logger.debug("LTM Solved Steps for '%s': %s", question, solved)
-        except Exception as e:
-            logger.error("Unexpected error during solving for '%s': %s", question, e, exc_info=True)
-            return f"Error: unexpected issue during solving ({e})"
-
-        steps = "\n".join(f"{i + 1}. Q: {q}\n   A: {a}" for i, (q, a) in enumerate(solved))
-        prompt = self.final_answer_prompt_template.format(solved_steps=steps, question=question)
-        logger.debug("LTM Final Answer Prompt:\n%s", prompt)
-        try:
-            final_ans = self.llm.generate(prompt).strip()
-            logger.debug("LTM Final Raw Answer: '%s'", final_ans)
-            return final_ans
-        except Exception as e:
-            logger.error("Final answer generation failed for '%s': %s", question, e, exc_info=True)
-            return f"Error: could not generate final answer ({e})"
-
-    async def answer_async(
-        self, question: str, semaphore: Optional[asyncio.Semaphore] = None
-    ) -> str:
-        try:
-            subqs = await self.decompose_async(question, semaphore)
-            logger.debug("LTM Async Decomposed Subquestions for '%s': %s", question, subqs)
-        except ValueError as e:
-            logger.error("Async decomposition failed for '%s': %s", question, e, exc_info=False)
-            return f"Error: could not decompose question async ({e})"
-        except Exception as e:
-            logger.error(
-                "Unexpected error during async decomposition for '%s': %s",
-                question,
-                e,
-                exc_info=True,
-            )
-            return f"Error: unexpected issue during async decomposition ({e})"
-
-        if not subqs:
-            logger.error("No async subquestions generated for '%s'", question)
-            return "Error: no async subquestions generated."
-
-        try:
-            solved = await self.solve_async(question, subqs, semaphore)
-            logger.debug("LTM Async Solved Steps for '%s': %s", question, solved)
-        except Exception as e:
-            logger.error(
-                "Unexpected error during async solving for '%s': %s", question, e, exc_info=True
-            )
-            return f"Error: unexpected issue during async solving ({e})"
-
-        steps = "\n".join(f"{i + 1}. Q: {q}\n   A: {a}" for i, (q, a) in enumerate(solved))
-        prompt = self.final_answer_prompt_template.format(solved_steps=steps, question=question)
-        logger.debug("LTM Async Final Answer Prompt:\n%s", prompt)
-        try:
-            if semaphore:
-                async with semaphore:
-                    ans = await self.llm.generate_async(prompt)
+            local_kwargs = kwargs.copy()
+            gen_args = {
+                "max_tokens": local_kwargs.pop("max_tokens", self.max_tokens),
+                "seed": local_kwargs.pop("seed", self.seed),
+                **local_kwargs,
+            }
+            if self.intermediate_output_format == "json":
+                json_p = (
+                    prompt
+                    + '\n\nReturn exactly one JSON object with key "final_answer" whose value is the answer.\n\nJSON Answer:'
+                )
+                parsed = self.llm.generate_json(json_p, response_model=ExtractedAnswer, **gen_args)
+                final_answer = str(parsed.final_answer).strip()
             else:
-                ans = await self.llm.generate_async(prompt)
-            final_ans = ans.strip()
-            logger.debug("LTM Async Final Raw Answer: '%s'", final_ans)
-            return final_ans
+                final_answer = self.llm.generate(prompt, **gen_args).strip()
         except Exception as e:
             logger.error(
-                "Final async answer generation failed for '%s': %s", question, e, exc_info=True
+                "Error during LTM answer generation for '%s': %s", question, e, exc_info=True
             )
-            return f"Error: could not generate final async answer ({e})"
+            final_answer = f"[Error: {type(e).__name__}]"
 
-    __call__ = answer
+        return final_answer
+
+    async def run_async(
+        self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs
+    ) -> str:
+        final_answer = "[Error: Async processing failed]"
+        try:
+            subs = await self.decompose_async(question, semaphore, **kwargs)
+            solved = await self.solve_async(question, subs, semaphore, **kwargs)
+
+            steps = "\n".join(f"{i + 1}. Q: {q}\n   A: {a}" for i, (q, a) in enumerate(solved))
+            prompt = self.final_answer_prompt_template.format(solved_steps=steps, question=question)
+            logger.debug("LTM Async Final Answer Prompt:\n%s", prompt)
+
+            local_kwargs = kwargs.copy()
+            gen_args = {
+                "max_tokens": local_kwargs.pop("max_tokens", self.max_tokens),
+                "seed": local_kwargs.pop("seed", self.seed),
+                **local_kwargs,
+            }
+            if self.intermediate_output_format == "json":
+                json_p = (
+                    prompt
+                    + '\n\nReturn exactly one JSON object with key "final_answer" whose value is the answer.\n\nJSON Answer:'
+                )
+                gen_args["response_model"] = ExtractedAnswer
+                if semaphore:
+                    async with semaphore:
+                        parsed = await self.llm.generate_json_async(json_p, **gen_args)
+                else:
+                    parsed = await self.llm.generate_json_async(json_p, **gen_args)
+                final_answer = str(parsed.final_answer).strip()
+            else:
+                if semaphore:
+                    async with semaphore:
+                        ans = await self.llm.generate_async(prompt, **gen_args)
+                else:
+                    ans = await self.llm.generate_async(prompt, **gen_args)
+                final_answer = ans.strip()
+        except Exception as e:
+            logger.error(
+                "Error during LTM async answer generation for '%s': %s", question, e, exc_info=True
+            )
+            final_answer = f"[Error: {type(e).__name__}]"
+
+        return final_answer

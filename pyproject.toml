@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "cogitator"
-version = "0.1.0a1"
+version = "0.1.0a2"
 description = "A Python toolkit for chain-of-thought prompting"
 authors = ["Hassan Abedi <hassan.abedi.t+cogitator@gmail.com>"]
 license = "MIT"
@@ -27,6 +27,7 @@ python = "^3.10"
 scikit-learn = "^1.6.1"
 openai = "^1.76.2"
 ollama = "^0.4.8"
+pydantic = "^2.11.4"
 sentence-transformers = "^4.1.0"
 
 [tool.poetry.group.dev.dependencies]
@@ -46,10 +47,10 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 pythonpath = ["cogitator"]
-testpaths   = ["tests"]
+testpaths = ["tests"]
 addopts = [
     "--tb=short",
-    "--disable-warnings",
+    #"--disable-warnings",
     "--cov=cogitator",
     "--cov-branch",
     "--cov-report=term",

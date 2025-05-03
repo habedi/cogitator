@@ -17,8 +17,11 @@ class AutoCoT:
         n_demos: int = 8,
         max_q_tokens: int = 60,
         max_steps: int = 5,
+        *,
         prompt_template: str = "Let's think step by step.",
         max_retries: int = 2,
+        max_tokens: Optional[int] = None,
+        rand_seed: Optional[int] = None,
     ):
         self.llm = llm
         self.n_demos = n_demos
@@ -26,6 +29,8 @@ class AutoCoT:
         self.max_steps = max_steps
         self.prompt_template = prompt_template
         self.max_retries = max_retries
+        self.max_tokens = max_tokens
+        self.rand_seed = rand_seed
         self.demos: Optional[List[str]] = None
 
     def fit(self, questions: List[str]) -> None:
@@ -33,7 +38,7 @@ class AutoCoT:
             raise ValueError(f"Need >= {self.n_demos} questions, got {len(questions)}")
 
         embs = np.stack(encode(questions))
-        labels, centers = cluster_embeddings(embs, self.n_demos)
+        labels, centers = cluster_embeddings(embs, self.n_demos, random_seed=self.rand_seed or 0)
 
         candidate_demos: List[Tuple[int, str]] = []
         for c in range(self.n_demos):
@@ -51,10 +56,14 @@ class AutoCoT:
         demos: List[str] = []
         for idx, q in candidate_demos:
             prompt = f"Q: {q}\nA: {self.prompt_template}"
-            cot = None
+            cot: Optional[str] = None
             for attempt in range(self.max_retries + 1):
                 try:
-                    cot = self.llm.generate(prompt)
+                    cot = self.llm.generate(
+                        prompt,
+                        max_tokens=self.max_tokens,
+                        seed=self.rand_seed,
+                    )
                     break
                 except Exception as e:
                     logger.warning("Retry %d for candidate demo '%s': %s", attempt + 1, q, e)
@@ -84,7 +93,7 @@ class AutoCoT:
             raise ValueError(f"Need >= {self.n_demos} questions, got {len(questions)}")
 
         embs = np.stack(encode(questions))
-        labels, centers = cluster_embeddings(embs, self.n_demos)
+        labels, centers = cluster_embeddings(embs, self.n_demos, random_seed=self.rand_seed or 0)
 
         candidate_demos_info: List[Tuple[int, str]] = []
         for c in range(self.n_demos):
@@ -99,22 +108,32 @@ class AutoCoT:
                 candidate_demos_info.append((idx, q))
                 break
 
-        async def generate_demo(idx: int, q: str):
+        async def generate_demo(idx: int, q: str) -> Tuple[int, str, Optional[str]]:
             prompt = f"Q: {q}\nA: {self.prompt_template}"
             for attempt in range(self.max_retries + 1):
                 try:
                     if semaphore:
                         async with semaphore:
-                            cot = await self.llm.generate_async(prompt)
+                            cot = await self.llm.generate_async(
+                                prompt,
+                                max_tokens=self.max_tokens,
+                                seed=self.rand_seed,
+                            )
                     else:
-                        cot = await self.llm.generate_async(prompt)
+                        cot = await self.llm.generate_async(
+                            prompt,
+                            max_tokens=self.max_tokens,
+                            seed=self.rand_seed,
+                        )
                     return idx, q, cot
                 except Exception as e:
                     logger.warning("Async retry %d for candidate demo '%s': %s", attempt + 1, q, e)
                     if attempt < self.max_retries:
                         await asyncio.sleep(0.5 * (2**attempt))
             logger.error(
-                "Failed to generate async demo for '%s' after %d retries", q, self.max_retries + 1
+                "Failed to generate async demo for '%s' after %d retries",
+                q,
+                self.max_retries + 1,
             )
             return idx, q, None
 
@@ -126,10 +145,6 @@ class AutoCoT:
             if isinstance(res, Exception):
                 logger.error("Async demo generation failed: %s", res, exc_info=False)
                 continue
-            if res is None:
-                logger.warning("Async demo generation returned None for a candidate.")
-                continue
-
             idx, q, cot = res
             if cot is not None and count_steps(cot) <= self.max_steps:
                 demos.append(f"Q: {q}\nA: {cot}")
@@ -145,20 +160,28 @@ class AutoCoT:
 
         self.demos = demos
 
-    def answer(self, test_q: str) -> str:
+    def run(self, test_q: str, **kwargs) -> str:
         if self.demos is None:
-            raise RuntimeError("Call fit(...) or fit_async(...) before answer(...)")
+            raise RuntimeError("Call fit() or fit_async() before run()")
         context = "\n\n".join(self.demos)
         payload = f"{context}\n\nQ: {test_q}\nA: {self.prompt_template}"
         logger.debug("AutoCoT payload:\n%s", payload)
-        return self.llm.generate(payload)
+        return self.llm.generate(
+            payload,
+            max_tokens=kwargs.pop("max_tokens", self.max_tokens),
+            seed=kwargs.pop("seed", self.rand_seed),
+            **kwargs,
+        )
 
-    async def answer_async(self, test_q: str) -> str:
+    async def run_async(self, test_q: str, **kwargs) -> str:
         if self.demos is None:
-            raise RuntimeError("Call fit(...) or fit_async(...) before answer_async(...)")
+            raise RuntimeError("Call fit() or fit_async() before run_async()")
         context = "\n\n".join(self.demos)
         payload = f"{context}\n\nQ: {test_q}\nA: {self.prompt_template}"
         logger.debug("Async AutoCoT payload:\n%s", payload)
-        return await self.llm.generate_async(payload)
-
-    __call__ = answer
+        return await self.llm.generate_async(
+            payload,
+            max_tokens=kwargs.pop("max_tokens", self.max_tokens),
+            seed=kwargs.pop("seed", self.rand_seed),
+            **kwargs,
+        )

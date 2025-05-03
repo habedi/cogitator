@@ -3,8 +3,7 @@ import argparse
 import asyncio
 import logging
 
-from cogitator.graph_of_thoughts import GraphOfThoughts
-from cogitator.model import BaseLLM
+from cogitator import BaseLLM, GraphOfThoughts
 
 from examples.shared import get_llm, run_main, setup_logging
 
@@ -13,7 +12,14 @@ logger = logging.getLogger(__name__)
 
 
 def setup_got(llm: BaseLLM) -> GraphOfThoughts:
-    return GraphOfThoughts(llm, max_iters=2, num_branches=2, beam_width=2, merge_threshold=0.9)
+    return GraphOfThoughts(
+        llm,
+        max_iters=2,
+        num_branches=2,
+        beam_width=2,
+        final_answer_format="json",
+        merge_threshold=0.9,
+    )
 
 
 QUESTIONS = [
@@ -23,7 +29,7 @@ QUESTIONS = [
 
 
 async def main_async(args: argparse.Namespace):
-    llm = get_llm(args.provider, args.openai_key, args.ollama_model)
+    llm = get_llm(args.provider, args.model_name, args.openai_key)
     got = setup_got(llm)
     semaphore = asyncio.Semaphore(5)
 
@@ -36,7 +42,7 @@ async def main_async(args: argparse.Namespace):
 
 
 def main_sync(args: argparse.Namespace):
-    llm = get_llm(args.provider, args.openai_key, args.ollama_model)
+    llm = get_llm(args.provider, args.model_name, args.openai_key)
     got = setup_got(llm)
 
     logger.info("Running GraphOfThoughts synchronously...")

@@ -27,10 +27,10 @@ def accuracy(preds: List[str], golds: List[str]) -> float:
 
 
 def cluster_embeddings(
-    embs: np.ndarray, n_clusters: int, random_state: int = 33
+    embs: np.ndarray, n_clusters: int, random_seed: int = 33
 ) -> tuple[np.ndarray, np.ndarray]:
     # Explicitly set n_init for consistent behavior across scikit-learn versions
-    kmeans = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=10)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=random_seed, n_init=10)
     labels = kmeans.fit_predict(embs)
     return labels, kmeans.cluster_centers_
 
