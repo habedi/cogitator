@@ -1,12 +1,8 @@
-# benches/extractors.py
 import logging
 import re
 from typing import Optional
 
 logger_extractors = logging.getLogger("benchmark_extractors")
-
-
-# --- Custom Heuristic Functions ---
 
 def _extract_label_heuristic(text: str) -> Optional[str]:
     text = str(text).strip()
@@ -16,13 +12,12 @@ def _extract_label_heuristic(text: str) -> Optional[str]:
         r'(?:final answer|answer|choice|option) is\s*:?\s*\(([A-Ea-e])\)',
         r'(?:final answer|answer|choice|option) is\s*:?\s*([A-Ea-e])\b',
         r'\(([A-Ea-e])\)\s*is the correct answer',
-        r'\b([A-Ea-e])\)\s*$',  # Label at the very end like "Answer: A)"
-        r'^([A-Ea-e])\)$',  # Line contains only "(A)"
-        r'correct label \(character before \'\)\'\)\n([A-Ea-e])',  # Specific pattern seen
+        r'\b([A-Ea-e])\)\s*$',
+        r'^([A-Ea-e])\)$',
+        r'correct label \(character before \'\)\'\)\n([A-Ea-e])',
         r'\b(?:Answer|Choice|Option):\s*([A-Ea-e])\b',
     ]
 
-    # Check last line first for explicit label patterns
     if lines:
         last_line = lines[-1].strip()
         for pattern in mcq_patterns:
@@ -31,13 +26,11 @@ def _extract_label_heuristic(text: str) -> Optional[str]:
                 ans = match.group(1).upper()
                 logger_extractors.debug(f"Extracted MCQ label '{ans}' from last line")
                 return ans
-        # Check if last line is just the label
         if re.fullmatch(r'[A-Ea-e]', last_line):
             ans = last_line.upper()
             logger_extractors.debug(f"Extracted MCQ label '{ans}' as last line content")
             return ans
 
-    # Check full text if not found in last line
     for pattern in mcq_patterns:
         match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
         if match:
@@ -52,7 +45,6 @@ def _extract_numerical_heuristic(text: str) -> Optional[str]:
     text = str(text).strip()
     lines = text.strip().splitlines()
 
-    # Prioritize specific formats like #### number or boxed
     gsm_pattern = r'####\s*([+-]?\d+(?:,\d+)*\.?\d*)'
     boxed_pattern = r'\\boxed\{([+-]?\d+(?:,\d+)*\.?\d*)\}'
 
@@ -68,12 +60,11 @@ def _extract_numerical_heuristic(text: str) -> Optional[str]:
         logger_extractors.debug(f"Extracted numerical answer '{extracted_num}' using boxed pattern")
         return extracted_num
 
-    # General numerical patterns (check last line first)
     num_pattern_loose = r'[+-]?\d+(?:,\d+)*(?:\.\d+)?'
     numerical_patterns = [
         r'(?:final answer is|the final answer is|final answer:|answer:|the answer is)\s*:?\s*(' + num_pattern_loose + r')\b',
         r'(?:is|equals|result is|=)\s*(' + num_pattern_loose + r')\s*\.?\s*$',
-    ]
+        ]
 
     if lines:
         last_line = lines[-1].strip()
@@ -84,14 +75,12 @@ def _extract_numerical_heuristic(text: str) -> Optional[str]:
                 logger_extractors.debug(
                     f"Extracted numerical answer '{extracted_num}' from last line pattern")
                 return extracted_num
-        # Check if last line IS the number
         if re.fullmatch(num_pattern_loose, last_line.replace("$", "")):
             extracted_num = last_line.replace(",", "").replace("$", "")
             logger_extractors.debug(
                 f"Extracted numerical answer '{extracted_num}' as last line content")
             return extracted_num
 
-    # Check full text if not found in last line
     for pattern in numerical_patterns:
         match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
         if match:
@@ -100,7 +89,6 @@ def _extract_numerical_heuristic(text: str) -> Optional[str]:
                 f"Extracted numerical answer '{extracted_num}' from full text pattern")
             return extracted_num
 
-    # Fallback: last number found in the text
     numbers = re.findall(num_pattern_loose, text)
     if numbers:
         last_num_str = numbers[-1].replace(",", "")
@@ -114,28 +102,25 @@ def _extract_boolean_heuristic(text: str) -> Optional[str]:
     text = str(text).strip().lower()
     lines = text.strip().splitlines()
 
-    # Check last line first
     if lines:
         last_line = lines[-1].strip().lower().rstrip(".")
         if last_line == "yes": return "yes"
         if last_line == "no": return "no"
-        if last_line == "true": return "yes"  # Map True to yes
-        if last_line == "false": return "no"  # Map False to no
+        if last_line == "true": return "yes"
+        if last_line == "false": return "no"
         match = re.search(r'\b(?:answer|result) is\s+(yes|no|true|false)\b', last_line)
         if match:
             ans = match.group(1)
             logger_extractors.debug(f"Extracted boolean '{ans}' from last line pattern")
             return "yes" if ans == "true" else "no" if ans == "false" else ans
 
-    # Check full text
     match = re.search(r'\b(?:final answer|answer|result) is\s+(yes|no|true|false)\b', text)
     if match:
         ans = match.group(1)
         logger_extractors.debug(f"Extracted boolean '{ans}' from full text pattern")
         return "yes" if ans == "true" else "no" if ans == "false" else ans
 
-    # Simple yes/no check as fallback
-    if "yes" in text.split()[-5:]: return "yes"  # Check last few words
+    if "yes" in text.split()[-5:]: return "yes"
     if "no" in text.split()[-5:]: return "no"
 
     return None
@@ -145,7 +130,6 @@ def _extract_letter_concat_heuristic(text: str) -> Optional[str]:
     text = str(text).strip()
     lines = text.strip().splitlines()
 
-    # Look for patterns like "Answer: <letters>" or the letters on the last line
     pattern = r'(?:final answer|answer|result) is\s*:?\s*([a-zA-Z]+)\b'
 
     if lines:
@@ -155,20 +139,17 @@ def _extract_letter_concat_heuristic(text: str) -> Optional[str]:
             ans = match.group(1)
             logger_extractors.debug(f"Extracted letter concat '{ans}' from last line pattern")
             return ans
-        # Check if last line is just the letters
         if re.fullmatch(r'[a-zA-Z]+', last_line):
             logger_extractors.debug(f"Extracted letter concat '{last_line}' as last line content")
             return last_line
 
-    # Check full text
     match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
     if match:
         ans = match.group(1)
         logger_extractors.debug(f"Extracted letter concat '{ans}' from full text pattern")
         return ans
 
-    # Fallback: If the last line looks like just concatenated letters
-    if lines and re.fullmatch(r'[a-zA-Z]{2,}', lines[-1].strip()):  # At least 2 letters
+    if lines and re.fullmatch(r'[a-zA-Z]{2,}', lines[-1].strip()):
         logger_extractors.debug(
             f"Extracted letter concat '{lines[-1].strip()}' as fallback last line")
         return lines[-1].strip()
@@ -176,21 +157,8 @@ def _extract_letter_concat_heuristic(text: str) -> Optional[str]:
     return None
 
 
-# --- Master Heuristic Function ---
-
 def extract_answer_heuristic_custom(raw_output: str, dataset_name: str) -> str:
-    """
-    Extracts the final answer using dataset-specific heuristics.
-
-    Args:
-        raw_output: The raw text output from the LLM.
-        dataset_name: The name of the dataset (e.g., 'gsm8k', 'aqua').
-
-    Returns:
-        The extracted answer string, or "[EXTRACTION_HEURISTIC_FAILURE]".
-    """
-    if not raw_output or str(raw_output).strip() == "[ERROR]" or str(raw_output).strip().startswith(
-            "[ERROR:"):
+    if not raw_output or str(raw_output).strip() == "[ERROR]" or str(raw_output).strip().startswith("[ERROR:"):
         return "[ERROR]"
 
     text = str(raw_output).strip()
@@ -207,8 +175,6 @@ def extract_answer_heuristic_custom(raw_output: str, dataset_name: str) -> str:
     else:
         logger_extractors.warning(
             f"No specific heuristic defined for dataset '{dataset_name}'. Using generic fallback.")
-        # Add a generic fallback if needed, or just fail
-        # For now, let's try numerical then label as a basic fallback
         extracted = _extract_numerical_heuristic(text)
         if extracted is None:
             extracted = _extract_label_heuristic(text)
@@ -220,8 +186,6 @@ def extract_answer_heuristic_custom(raw_output: str, dataset_name: str) -> str:
 
     return extracted.strip()
 
-
-# --- Custom LLM Extraction Prompts ---
 
 MCQ_EXTRACTION_PROMPT = """
 Original Question:
@@ -294,13 +258,7 @@ JSON Output:
 """
 
 
-# --- Master LLM Extraction Prompt Selector ---
-
 def get_llm_extraction_prompt(question: str, raw_output: str, dataset_name: str) -> str:
-    """
-    Selects the appropriate LLM extraction prompt based on the dataset type
-    and formats it with the question and raw_output.
-    """
     template: str
     if dataset_name in ["aqua", "csqa"]:
         template = MCQ_EXTRACTION_PROMPT
@@ -313,7 +271,6 @@ def get_llm_extraction_prompt(question: str, raw_output: str, dataset_name: str)
     else:
         logger_extractors.warning(
             f"No specific LLM prompt template defined for dataset '{dataset_name}'. Using generic numerical fallback.")
-        # Fallback to a generic prompt or numerical if unsure
         template = NUMERICAL_EXTRACTION_PROMPT
 
     return template.format(question=question, raw_output=raw_output)

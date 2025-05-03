@@ -1,0 +1,93 @@
+common:
+  debug: false
+  openai_key_env_var: "OPENAI_API_KEY"
+
+generation:
+  dataset: "gsm8k"
+  cutoff: 50
+  provider: "ollama"
+  model_name: null
+  use_async: true
+  concurrency: 3
+  use_json_strategies: false # Controls default for LtM format, GoT format, SC extraction
+  output_file: "benchmark_results.jsonl"
+  llm_params:
+    max_tokens: 1024
+    seed: 33
+    temperature: 0.7
+
+evaluation:
+  input_file: null # Defaults to generation.output_file
+  extractor:
+    type: "heuristic" # 'heuristic' or 'llm'
+    provider: "ollama" # 'ollama' or 'openai'
+    model_name: null
+    # llm_params:
+    #   max_tokens: 64
+    #   seed: 42
+    #   temperature: 0.1
+  show_details: false
+  concurrency: 3 # Concurrency specifically for evaluation LLM extractor
+
+# --- Strategy-Specific Parameters ---
+strategies:
+  # If a strategy section exists, it's enabled by default.
+  # Add 'enabled: false' to disable it.
+  ZeroShotCoT:
+    enabled: true
+    # No specific params other than llm_params
+
+  AutoCoT:
+    enabled: true
+    n_demos: 5
+    max_q_tokens: 100
+    max_steps: 8
+    max_retries: 3
+    # prompt_template: "Let's think step-by-step." # Optional override
+
+  CDWCoT:
+    enabled: true
+    pool_size: 10
+    n_clusters: 5
+    lr: 0.1
+    sample_size: 10
+    max_grad_norm: 1.0
+    init_pool_retries: 1
+    # Specific training parameters for CDWCoT's train/train_async methods
+    train_params:
+      epochs: 5
+      patience: 2
+      val_split: 0.2
+
+  SelfConsistency:
+    enabled: true
+    n_samples: 10
+    temperature: 0.8 # Overrides global llm_params.temperature for SC calls
+    # stop: ["\n\n"] # Example: list of stop sequences
+    # internal_extraction_format: "json" # Overrides generation.use_json_strategies for SC only
+
+  LeastToMost:
+    enabled: true
+    max_subqs: 10
+    # intermediate_output_format: "json" # Overrides generation.use_json_strategies for LtM only
+    # Templates can be overridden here if needed:
+    # decompose_prompt_template: "..."
+    # solve_prompt_template: "..."
+    # final_answer_prompt_template: "..."
+
+  TreeOfThoughts:
+    enabled: true
+    max_depth: 3
+    num_branches: 3
+    sims: 10
+    c_puct: 1.0
+    # Templates can be overridden here
+
+  GraphOfThoughts:
+    enabled: true
+    max_iters: 5
+    num_branches: 3
+    beam_width: 5
+    merge_threshold: 0.9
+    # final_answer_format: "json" # Overrides generation.use_json_strategies for GoT only
+    # Templates can be overridden here
