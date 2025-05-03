@@ -3,9 +3,9 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 import time
-import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from benches.shared import (
@@ -77,6 +77,7 @@ async def run_setup_phase(
                         semaphore=semaphore
                     )
                     logger.info("CDWCoT train_async complete.")
+
                 setup_tasks.append(cdw_setup_wrapper())
             else:
                 logger.info("Running CDWCoT init_pool...")
@@ -112,7 +113,8 @@ def get_methods_to_run(
         zero_shot_prompt = lambda q: f"Q: {q}\nA: Let's think step by step."
         zero_shot_kwargs = global_llm_params.copy()
         zero_shot_func = (
-            lambda q, **kw: llm.generate_async(zero_shot_prompt(q), **zero_shot_kwargs, **kw)) if use_async else \
+            lambda q, **kw: llm.generate_async(zero_shot_prompt(q), **zero_shot_kwargs,
+                                               **kw)) if use_async else \
             (lambda q, **kw: llm.generate(zero_shot_prompt(q), **zero_shot_kwargs, **kw))
         methods.append(("Zero-Shot-CoT", zero_shot_func))
         logger.debug("ZeroShotCoT is enabled.")
@@ -132,12 +134,14 @@ def get_methods_to_run(
             methods.append((name, wrapped_run_method))
             logger.debug(f"{name} is enabled.")
         else:
-            logger.info(f"Skipping strategy '{name}' as it is disabled in config or instance is missing.")
+            logger.info(
+                f"Skipping strategy '{name}' as it is disabled in config or instance is missing.")
 
     return methods
 
 
-async def run_single_async(q: str, model_func: Callable, semaphore: asyncio.Semaphore) -> Tuple[str, float]:
+async def run_single_async(q: str, model_func: Callable, semaphore: asyncio.Semaphore) -> Tuple[
+    str, float]:
     t0 = time.time()
     raw_output = "[ERROR]"
     try:
@@ -163,7 +167,7 @@ def run_single_sync(q: str, model_func: Callable) -> Tuple[str, float]:
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="Run Cogitatør Benchmarks - Generation Phase")
+    parser = argparse.ArgumentParser(description="Run Cogitator Benchmarks - Generation Phase")
     add_common_args(parser)
     add_generation_args(parser)
     args = parser.parse_args()
@@ -190,6 +194,7 @@ async def main():
             provider=config['provider'],
             model_name=config['model_name'],
             openai_key=openai_api_key,
+            ollama_host=config.get('ollama_host', None),
             llm_params=config.get('llm_params', {})
         )
     except Exception as e:
@@ -207,7 +212,9 @@ async def main():
 
     if _is_strategy_enabled(config, "AutoCoT"):
         cfg = _get_strategy_config(config, "AutoCoT")
-        params = extract_init_params(cfg, ["n_demos", "max_q_tokens", "max_steps", "prompt_template", "max_retries"])
+        params = extract_init_params(cfg,
+                                     ["n_demos", "max_q_tokens", "max_steps", "prompt_template",
+                                      "max_retries"])
         instances["AutoCoT"] = AutoCoT(llm,
                                        max_tokens=global_max_tokens,
                                        rand_seed=global_seed,
@@ -216,7 +223,8 @@ async def main():
 
     if _is_strategy_enabled(config, "CDWCoT"):
         cfg = _get_strategy_config(config, "CDWCoT")
-        params = extract_init_params(cfg, ["pool_size", "n_clusters", "lr", "sample_size", "max_grad_norm", "init_pool_retries"])
+        params = extract_init_params(cfg, ["pool_size", "n_clusters", "lr", "sample_size",
+                                           "max_grad_norm", "init_pool_retries"])
         instances["CDWCoT"] = CDWCoT(llm,
                                      max_tokens=global_max_tokens,
                                      seed=global_seed,
@@ -235,28 +243,35 @@ async def main():
 
     if _is_strategy_enabled(config, "LeastToMost"):
         cfg = _get_strategy_config(config, "LeastToMost")
-        params = extract_init_params(cfg, ["max_subqs", "decompose_prompt_template", "solve_prompt_template", "final_answer_prompt_template"])
+        params = extract_init_params(cfg, ["max_subqs", "decompose_prompt_template",
+                                           "solve_prompt_template", "final_answer_prompt_template"])
         ltm_format = cfg.get("intermediate_output_format")
         if ltm_format is None:
             ltm_format = "json" if config['use_json_strategies'] else "text"
         params['intermediate_output_format'] = ltm_format
-        instances["LeastToMost"] = LeastToMost(llm, max_tokens=global_max_tokens, seed=global_seed, **params)
+        instances["LeastToMost"] = LeastToMost(llm, max_tokens=global_max_tokens, seed=global_seed,
+                                               **params)
         logger.info(f"Initialized LeastToMost with params: {params}")
 
     if _is_strategy_enabled(config, "TreeOfThoughts"):
         cfg = _get_strategy_config(config, "TreeOfThoughts")
-        params = extract_init_params(cfg, ["max_depth", "num_branches", "sims", "c_puct", "expand_prompt", "eval_prompt"])
-        instances["TreeOfThoughts"] = TreeOfThoughts(llm, max_tokens=global_max_tokens, seed=global_seed, **params)
+        params = extract_init_params(cfg, ["max_depth", "num_branches", "sims", "c_puct",
+                                           "expand_prompt", "eval_prompt"])
+        instances["TreeOfThoughts"] = TreeOfThoughts(llm, max_tokens=global_max_tokens,
+                                                     seed=global_seed, **params)
         logger.info(f"Initialized TreeOfThoughts with params: {params}")
 
     if _is_strategy_enabled(config, "GraphOfThoughts"):
         cfg = _get_strategy_config(config, "GraphOfThoughts")
-        params = extract_init_params(cfg, ["max_iters", "num_branches", "beam_width", "merge_threshold", "expand_prompt", "eval_prompt"])
+        params = extract_init_params(cfg,
+                                     ["max_iters", "num_branches", "beam_width", "merge_threshold",
+                                      "expand_prompt", "eval_prompt"])
         got_format = cfg.get("final_answer_format")
         if got_format is None:
             got_format = "json" if config['use_json_strategies'] else "text"
         params['final_answer_format'] = got_format
-        instances["GraphOfThoughts"] = GraphOfThoughts(llm, max_tokens=global_max_tokens, seed=global_seed, **params)
+        instances["GraphOfThoughts"] = GraphOfThoughts(llm, max_tokens=global_max_tokens,
+                                                       seed=global_seed, **params)
         logger.info(f"Initialized GraphOfThoughts with params: {params}")
 
     all_methods_to_run = get_methods_to_run(config, instances, llm)
@@ -267,10 +282,12 @@ async def main():
         sys.exit(1)
 
     semaphore = asyncio.Semaphore(config['concurrency'])
-    setup_successful = await run_setup_phase(config, llm, methods_to_run_names, questions, golds, semaphore, instances)
+    setup_successful = await run_setup_phase(config, llm, methods_to_run_names, questions, golds,
+                                             semaphore, instances)
 
     output_filepath = config['output_file']
-    logger.info(f"Starting generation for {len(methods_to_run_names)} enabled methods, saving to {output_filepath}...")
+    logger.info(
+        f"Starting generation for {len(methods_to_run_names)} enabled methods, saving to {output_filepath}...")
 
     with open(output_filepath, 'w') as outfile:
         if config['use_async']:
@@ -289,7 +306,8 @@ async def main():
             for task_idx, (raw_output, time_taken) in enumerate(gen_outputs):
                 i, q, name = task_info[task_idx]
                 record = {"question": q, "gold": golds[i], "method": name,
-                          "dataset": config['dataset'], "raw_output": raw_output, "time": time_taken}
+                          "dataset": config['dataset'], "raw_output": raw_output,
+                          "time": time_taken}
                 outfile.write(json.dumps(record) + '\n')
                 logger.debug(f"Generated: Q{i + 1} - {name} ({time_taken:.2f}s)")
 
@@ -299,10 +317,13 @@ async def main():
                 for name, model_func_wrapped in all_methods_to_run:
                     if model_func_wrapped is None: continue
 
-                    if name == "AutoCoT" and (not setup_successful or not getattr(instances.get("AutoCoT"), 'demos', None)):
+                    if name == "AutoCoT" and (
+                        not setup_successful or not getattr(instances.get("AutoCoT"), 'demos',
+                                                            None)):
                         logger.warning(f"Skipping {name} for Q{i + 1} (setup failed/incomplete).")
                         continue
-                    if name == "CDWCoT" and (not setup_successful or not getattr(instances.get("CDWCoT"), 'PC', None)):
+                    if name == "CDWCoT" and (
+                        not setup_successful or not getattr(instances.get("CDWCoT"), 'PC', None)):
                         logger.warning(f"Skipping {name} for Q{i + 1} (setup failed/incomplete).")
                         continue
 

@@ -4,7 +4,7 @@
   </picture>
 <br>
 
-<h2>Cogitatør</h2>
+<h2>Cogitator</h2>
 
 [![Tests](https://img.shields.io/github/actions/workflow/status/habedi/cogitator/tests.yml?label=tests&style=flat&labelColor=333333&logo=github&logoColor=white)](https://github.com/habedi/cogitator/actions/workflows/tests.yml)
 [![Code Coverage](https://img.shields.io/codecov/c/github/habedi/cogitator?style=flat&label=coverage&labelColor=333333&logo=codecov&logoColor=white)](https://codecov.io/gh/habedi/cogitator)
@@ -15,7 +15,6 @@
 [![License](https://img.shields.io/badge/license-MIT-00acc1?style=flat&labelColor=333333&logo=open-source-initiative&logoColor=white)](https://github.com/habedi/cogitator/blob/main/LICENSE)
 [![Documentation](https://img.shields.io/badge/docs-latest-8ca0d7?style=flat&labelColor=333333&logo=readthedocs&logoColor=white)](https://github.com/habedi/cogitator/blob/main/docs)
 [![DOI](https://img.shields.io/badge/doi-10.5281/zenodo.15331821-6f42c1.svg?style=flat&labelColor=333333&logo=zenodo&logoColor=white)](https://doi.org/10.5281/zenodo.15331821)
-[![Status](https://img.shields.io/badge/status-pre--release-ff9800?style=flat&labelColor=333333&logo=github&logoColor=white)](https://github.com/habedi/cogitator)
 
 A Python toolkit for chain-of-thought prompting
 
@@ -23,7 +22,7 @@ A Python toolkit for chain-of-thought prompting
 
 ---
 
-Cogitatør is a Python toolkit for experimenting and working with
+Cogitator is a Python toolkit for experimenting and working with
 [chain-of-thought (CoT) prompting](https://arxiv.org/abs/2201.11903)
 techniques in large language models (LLMs).
 CoT prompting improves LLM performance on complex tasks (like question-answering, reasoning, and problem-solving)
@@ -33,11 +32,11 @@ applications.
 
 ### Features
 
-- A simple unified API for different CoT prompting methods
-- Support for remote and local LLM providers, including:
-    - OpenAI
-    - Ollama
-- Supported CoT prompting methods include:
+- Provides unified sync/async API for CoT methods
+- Supports using OpenAI and Ollama as LLM providers
+- Supports structured JSON model output with Pydantic validation
+- Includes a customizable benchmarking framework (see [benches](benches))
+- Includes implementations of popular CoT methods and frameworks like
     - [Self-Consistency CoT (ICLR 2023)](https://arxiv.org/abs/2203.11171)
     - [Automatic CoT (ICLR 2023)](https://arxiv.org/abs/2210.03493)
     - [Least-to-Most Prompting (ICLR 2023)](https://arxiv.org/abs/2205.10625)
@@ -49,20 +48,41 @@ applications.
 
 ### Getting Started
 
-#### Installation
-
 ```bash
 pip install cogitator
 ```
 
+Or, if you want to install from the latest version with examples and benchmarks included
+
+```bash
+git clone --depth=1 https://github.com/habedi/cogitator && cd cogitator
+
+# Set up Python environment
+pip install poetry
+poetry install --with dev
+
+# Run the tests to make sure everything is working (optional)
+poetry run pytest
+```
+
 #### Examples
 
-See the [examples](examples) directory for usage examples of each CoT method.
+See the [examples](examples) directory for examples.
 
-#### Benchmarks
+---
 
-Check out the [benches](benches) directory for benchmarks comparing the performance of the different CoT methods on
-various datasets.
+### Documentation
+
+See the [docs](docs) directory for the documentation for the Cogitator toolkit.
+
+---
+
+### Benchmarking Framework
+
+Cogitator project includes a customizable and extensible benchmarking framework to evaluate the performance of different
+CoT methods on various datasets like [GSM8K](https://arxiv.org/abs/2110.14168) and [StrategyQA](https://arxiv.org/abs/2101.02235).
+
+Check out the [benches](benches) directory for more details about the framework and how it could be used.
 
 ---
 
@@ -72,7 +92,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to make a contribution
 
 ### Logo
 
-The logo is named the "Cognition" and was originally created by
+The logo is named "Cognition" and was originally created by
 [vectordoodle](https://www.svgrepo.com/author/vectordoodle).
 
 ### License

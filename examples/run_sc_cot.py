@@ -33,9 +33,7 @@ async def main_async(args: argparse.Namespace) -> None:
     semaphore = asyncio.Semaphore(5)
 
     logger.info("Running SelfConsistency asynchronously...")
-    answer = await sc.run_async(PROMPT, semaphore=semaphore)
-    print(f"Prompt: {PROMPT}")
-    print(f"Final Answer (async self-consistency): {answer}")
+    await sc.run_async(PROMPT, semaphore=semaphore)
 
 
 def main_sync(args: argparse.Namespace) -> None:
@@ -43,9 +41,7 @@ def main_sync(args: argparse.Namespace) -> None:
     sc = setup_sc(llm)
 
     logger.info("Running SelfConsistency synchronously...")
-    answer = sc.run(PROMPT)
-    print(f"Prompt: {PROMPT}")
-    print(f"Final Answer (sync self-consistency): {answer}")
+    sc.run(PROMPT)
 
 
 if __name__ == "__main__":

@@ -2,14 +2,13 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import re
 import sys
 from collections import defaultdict
 from typing import Optional, Dict, Any
 
 import polars as pl
-import yaml
-import os
 
 from benches.extractors import extract_answer_heuristic_custom, get_llm_extraction_prompt
 from benches.shared import (
@@ -18,7 +17,6 @@ from benches.shared import (
     add_common_args, add_evaluation_args,
     load_and_merge_config,
     DEFAULT_OPENAI_ENV_VAR,
-    DEFAULT_RANDOM_SEED,
     FAILURE_MARKERS,
     EXTRACTION_OK,
     EXTRACTION_ERROR_MARKER,
@@ -60,7 +58,7 @@ async def _run_llm_extraction_task(
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="Run Cogitatør Benchmarks - Evaluation Phase")
+    parser = argparse.ArgumentParser(description="Run Cogitator Benchmarks - Evaluation Phase")
     add_common_args(parser)
     add_evaluation_args(parser)
     args = parser.parse_args()
@@ -84,6 +82,7 @@ async def main():
                 model_name=config['extractor_model_name'],
                 openai_key=openai_api_key,
                 is_extractor=True,
+                ollama_host=config.get('extractor_ollama_host', None),
                 llm_params=config.get('extractor_llm_params', {})
             )
         except Exception as e:
@@ -153,13 +152,15 @@ async def main():
                         logger.error(f"Unexpected error preparing task for record {i + 1}: {e}")
 
                 if tasks_to_run:
-                    logger.info(f"Running {len(tasks_to_run)} async LLM extraction tasks with concurrency {eval_concurrency}...")
+                    logger.info(
+                        f"Running {len(tasks_to_run)} async LLM extraction tasks with concurrency {eval_concurrency}...")
                     llm_extraction_results = await asyncio.gather(*tasks_to_run, return_exceptions=True)
                     logger.info("Async LLM extraction tasks complete.")
                     for task_idx, result in enumerate(llm_extraction_results):
                         record_idx = record_indices_for_tasks[task_idx]
                         if isinstance(result, Exception):
-                            logger.error(f"Async extraction task for record {record_idx+1} resulted in exception: {result}")
+                            logger.error(
+                                f"Async extraction task for record {record_idx + 1} resulted in exception: {result}")
                             llm_result_map[record_idx] = EXTRACTION_EXCEPTION_MARKER
                         else:
                             llm_result_map[record_idx] = result
@@ -311,6 +312,7 @@ async def main():
         logger.error(f"Failed to create or display results DataFrame: {e}")
         logger.info("Raw summary list:")
         print(final_summary)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

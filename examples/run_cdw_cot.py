@@ -27,7 +27,7 @@ TRAIN_QUESTIONS = [
 ]
 TRAIN_ANSWERS = ["7", "4", "12", "4", "8", "5", "8", "15"]
 
-TEST_QUERIES = ["If you have 3 boxes of 5 pens each, how many pens?", "Solve for y: y – 2 = 4"]
+TEST_QUERIES = ["If you have 3 boxes of 5 pens each, how many pens?", "Solve for y: y - 2 = 4"]
 
 
 async def main_async(args: argparse.Namespace) -> None:
@@ -43,8 +43,8 @@ async def main_async(args: argparse.Namespace) -> None:
         logger.info("Running test questions asynchronously...")
         tasks = [cdw.run_async(q, semaphore=semaphore) for q in TEST_QUERIES]
         answers = await asyncio.gather(*tasks)
-        for q, a in zip(TEST_QUERIES, answers):
-            print(f"Q: {q}\nA: {a}\n")
+        for _q, _a in zip(TEST_QUERIES, answers, strict=False):
+            pass
     except Exception as e:
         logger.error(f"CDW-CoT async example failed: {e}", exc_info=True)
 
@@ -60,8 +60,7 @@ def main_sync(args: argparse.Namespace) -> None:
         cdw.train(val_split=0.4, epochs=5, patience=3)
         logger.info("Running test questions synchronously...")
         for q in TEST_QUERIES:
-            out = cdw.run(q)
-            print(f"Q: {q}\nA: {out}\n")
+            cdw.run(q)
     except Exception as e:
         logger.error(f"CDW-CoT sync example failed: {e}", exc_info=True)
 

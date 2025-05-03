@@ -1,8 +1,8 @@
-# benches/shared.py
+# ./benches/shared.py
 import argparse
 import logging
-import re
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 import yaml
@@ -40,6 +40,7 @@ FAILURE_MARKERS = [
     "[ERROR]",
 ]
 
+
 def setup_logging(level=logging.INFO):
     logging.basicConfig(
         level=level,
@@ -51,6 +52,7 @@ def setup_logging(level=logging.INFO):
     logging.getLogger("datasets").setLevel(logging.WARNING)
     logging.getLogger("asyncio").setLevel(logging.WARNING)
     logging.getLogger("huggingface_hub.file_download").setLevel(logging.WARNING)
+
 
 class Datasets:
     registry = {
@@ -180,7 +182,8 @@ class Datasets:
         questions = ds["question"]
         options_list = ds["options"]
         questions_with_options = [
-            q + "\n" + "It's a multiple choice question. Pick the correct label (character before ')')\n" + " ".join(opts)
+            q + "\n" + "It's a multiple choice question. Pick the correct label (character before ')')\n" + " ".join(
+                opts)
             for q, opts in zip(questions, options_list)
         ]
         return questions_with_options, ds["correct"]
@@ -203,9 +206,11 @@ class Datasets:
                     golds.append(answer_key.upper())
                 else:
                     qs.pop()
-                    logger.warning(f"Skipping invalid answer key '{answer_key}' for item in commonsense_qa: {item.get('id', 'N/A')}")
+                    logger.warning(
+                        f"Skipping invalid answer key '{answer_key}' for item in commonsense_qa: {item.get('id', 'N/A')}")
             except (KeyError, IndexError, TypeError, ValueError) as e:
-                logger.warning(f"Skipping invalid item in commonsense_qa due to error: {e} - Item: {item.get('id', 'N/A')}")
+                logger.warning(
+                    f"Skipping invalid item in commonsense_qa due to error: {e} - Item: {item.get('id', 'N/A')}")
                 if len(qs) > len(golds):
                     qs.pop()
         return qs, golds
@@ -238,6 +243,7 @@ def get_llm(
         provider: str,
         model_name: Optional[str] = None,
         openai_key: Optional[str] = None,
+        ollama_host: Optional[str] = None,
         is_extractor: bool = False,
         llm_params: Optional[Dict[str, Any]] = None
 ) -> BaseLLM:
@@ -255,15 +261,17 @@ def get_llm(
 
     logger.info(
         f"Initializing {role} LLM: provider={provider}, model={model_name}, "
-        f"params={base_llm_params}"
+        f"ollama_host={ollama_host}, params={base_llm_params}"
     )
 
     if provider == "openai":
         if not openai_key:
-            pass
+            openai_key = os.getenv(DEFAULT_OPENAI_ENV_VAR)
+            if not openai_key:
+                raise ValueError("OpenAI provider selected but no API key found in args or env var.")
         return OpenAILLM(api_key=openai_key, model=model_name, **base_llm_params)
     elif provider == "ollama":
-        return OllamaLLM(model=model_name, **base_llm_params)
+        return OllamaLLM(model=model_name, ollama_host=ollama_host, **base_llm_params)
     else:
         raise ValueError(f"Unsupported provider: {provider}")
 
@@ -303,7 +311,7 @@ def extract_final_answer(raw_output: str) -> str:
         r'(?:final answer is|the final answer is|final answer:|answer:|the answer is)\s*(' + num_pattern + r')\b',
         r'\\boxed\{(' + num_pattern + r')\}',
         r'(?:is|equals|result is|=)\s*(' + num_pattern + r')\s*\.?\s*$',
-        ]
+    ]
     for pattern in numerical_patterns:
         match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
         if match:
@@ -311,7 +319,8 @@ def extract_final_answer(raw_output: str) -> str:
             logger.debug(f"Extracted numerical answer '{extracted_num}' using pattern: '{pattern}'")
             try:
                 f_val = float(extracted_num)
-                if f_val.is_integer(): return str(int(f_val))
+                if f_val.is_integer():
+                    return str(int(f_val))
             except ValueError:
                 pass
             return extracted_num
@@ -324,22 +333,26 @@ def extract_final_answer(raw_output: str) -> str:
                 logger.debug(f"Extracted numerical answer '{last_num_str}' from last line direct match.")
                 try:
                     f_val = float(last_num_str)
-                    if f_val.is_integer(): return str(int(f_val))
+                    if f_val.is_integer():
+                        return str(int(f_val))
                 except ValueError:
                     pass
                 return last_num_str
-            if re.search(r'\b(?:is|answer|equals)\s+(' + re.escape(last_num_str) + r')\s*\.?\s*$', last_line, re.IGNORECASE):
+            if re.search(r'\b(?:is|answer|equals)\s+(' + re.escape(last_num_str) + r')\s*\.?\s*$', last_line,
+                         re.IGNORECASE):
                 logger.debug(f"Extracted numerical answer '{last_num_str}' from last line phrasing.")
                 try:
                     f_val = float(last_num_str)
-                    if f_val.is_integer(): return str(int(f_val))
+                    if f_val.is_integer():
+                        return str(int(f_val))
                 except ValueError:
                     pass
                 return last_num_str
         logger.debug(f"Extracted numerical answer '{last_num_str}' as last number found.")
         try:
             f_val = float(last_num_str)
-            if f_val.is_integer(): return str(int(f_val))
+            if f_val.is_integer():
+                return str(int(f_val))
         except ValueError:
             pass
         return last_num_str
@@ -487,56 +500,97 @@ def load_and_merge_config(
     strategies_config = config.get("strategies", {})
     final_config['strategies'] = strategies_config
 
-    def get_value(arg_name: str, default_value: Any, is_flag: bool = False,
-                  primary_config: Dict = section_config,
-                  secondary_config: Dict = common_config):
-        cli_value = getattr(args, arg_name, None)
-        argparse_default = None
-        for action in parser_definition._actions:
-            if action.dest == arg_name:
-                argparse_default = action.default
-                break
+    parser_defaults_ns = parser_definition.parse_args([])
+    args_vars = vars(args)
+    defaults_vars = vars(parser_defaults_ns)
 
-        cli_is_set = (cli_value is not None and cli_value != argparse_default)
-        if is_flag:
-            cli_is_set = (cli_value is True)
+    cli_set_args = set()
+    for key, value in args_vars.items():
+        if key in defaults_vars and value != defaults_vars.get(key):
+            action = next((a for a in parser_definition._actions if a.dest == key), None)
+            if isinstance(action, argparse._StoreTrueAction) and value is True:
+                cli_set_args.add(key)
+            elif not isinstance(action, argparse._StoreTrueAction):
+                cli_set_args.add(key)
+
+    def get_value(arg_name: str, default_value: Any,
+                  primary_config: Dict = section_config,
+                  secondary_config: Dict = common_config,
+                  cli_arg_name: Optional[str] = None):
+
+        check_cli_arg_name = cli_arg_name or arg_name
+        cli_value = getattr(args, check_cli_arg_name, None)
+        cli_is_set = check_cli_arg_name in cli_set_args
 
         yaml_value = primary_config.get(arg_name, secondary_config.get(arg_name, None))
 
         if cli_is_set:
+            logger.debug(f"Using CLI value for '{check_cli_arg_name}': {cli_value}")
             return cli_value
         elif yaml_value is not None:
+            logger.debug(f"Using YAML value for '{arg_name}': {yaml_value}")
             return yaml_value
         else:
+            logger.debug(f"Using default value for '{arg_name}': {default_value}")
             return default_value
 
-    final_config['debug'] = get_value('debug', False, is_flag=True)
-    final_config['openai_key_env_var'] = get_value('openai_key_env_var', DEFAULT_OPENAI_ENV_VAR)
+    final_config['debug'] = getattr(args, 'debug', False) if 'debug' in cli_set_args else common_config.get('debug',
+                                                                                                            False)
+    final_config['openai_key_env_var'] = get_value('openai_key_env_var', DEFAULT_OPENAI_ENV_VAR,
+                                                   cli_arg_name='openai_key_env_var')
 
     if config_section == "generation":
-        final_config['dataset'] = get_value('dataset', DEFAULT_DATASET)
-        final_config['cutoff'] = get_value('cutoff', DEFAULT_CUTOFF)
-        final_config['provider'] = get_value('provider', DEFAULT_PROVIDER)
-        final_config['model_name'] = get_value('model_name', None)
-        final_config['use_async'] = get_value('use_async', False, is_flag=True)
-        final_config['concurrency'] = get_value('concurrency', DEFAULT_CONCURRENCY)
-        final_config['use_json_strategies'] = get_value('use_json_strategies', False, is_flag=True)
-        final_config['output_file'] = get_value('output_file', DEFAULT_OUTPUT_FILE)
+        final_config['dataset'] = get_value('dataset', DEFAULT_DATASET, cli_arg_name='dataset')
+        final_config['cutoff'] = get_value('cutoff', DEFAULT_CUTOFF, cli_arg_name='cutoff')
+        final_config['provider'] = get_value('provider', DEFAULT_PROVIDER, cli_arg_name='provider')
+        final_config['model_name'] = get_value('model_name', None, cli_arg_name='model_name')
+        final_config['ollama_host'] = get_value('ollama_host', None)
+        final_config['use_async'] = getattr(args, 'use_async',
+                                            False) if 'use_async' in cli_set_args else section_config.get('use_async',
+                                                                                                          False)
+        final_config['concurrency'] = get_value('concurrency', DEFAULT_CONCURRENCY, cli_arg_name='concurrency')
+        final_config['use_json_strategies'] = getattr(args, 'use_json_strategies',
+                                                      False) if 'use_json_strategies' in cli_set_args else section_config.get(
+            'use_json_strategies', False)
+        final_config['output_file'] = get_value('output_file', DEFAULT_OUTPUT_FILE, cli_arg_name='output_file')
         final_config['llm_params'] = section_config.get('llm_params', {})
 
     elif config_section == "evaluation":
         gen_output_file = config.get("generation", {}).get("output_file", DEFAULT_OUTPUT_FILE)
-        default_input = gen_output_file if getattr(args, 'input_file', None) is None else None
-        final_config['input_file'] = get_value('input_file', default_input )
+        default_input = gen_output_file if 'input_file' not in cli_set_args and hasattr(args,
+                                                                                        'input_file') and args.input_file is None else None
+        final_config['input_file'] = get_value('input_file', default_input or DEFAULT_OUTPUT_FILE,
+                                               cli_arg_name='input_file')
 
         extractor_yaml_config = section_config.get("extractor", {})
-        final_config['extractor_type'] = get_value('extractor_type', DEFAULT_EXTRACTOR_TYPE, primary_config=extractor_yaml_config)
-        final_config['extractor_provider'] = get_value('provider', DEFAULT_PROVIDER, primary_config=extractor_yaml_config)
-        final_config['extractor_model_name'] = get_value('model_name', None, primary_config=extractor_yaml_config)
+
+        final_config['extractor_type'] = get_value(
+            'type',
+            DEFAULT_EXTRACTOR_TYPE,
+            primary_config=extractor_yaml_config,
+            secondary_config={},
+            cli_arg_name='extractor_type'
+        )
+        final_config['extractor_provider'] = get_value(
+            'provider', DEFAULT_PROVIDER,
+            primary_config=extractor_yaml_config,
+            cli_arg_name='provider'
+        )
+        final_config['extractor_model_name'] = get_value(
+            'model_name', None,
+            primary_config=extractor_yaml_config,
+            cli_arg_name='model_name'
+        )
+        final_config['extractor_ollama_host'] = get_value(
+            'ollama_host', None,
+            primary_config=extractor_yaml_config
+        )
         final_config['extractor_llm_params'] = extractor_yaml_config.get('llm_params', {})
 
-        final_config['concurrency'] = get_value('concurrency', DEFAULT_CONCURRENCY)
-        final_config['show_details'] = get_value('show_details', False, is_flag=True)
+        final_config['concurrency'] = get_value('concurrency', DEFAULT_CONCURRENCY, cli_arg_name='concurrency')
+        final_config['show_details'] = getattr(args, 'show_details',
+                                               False) if 'show_details' in cli_set_args else section_config.get(
+            'show_details', False)
 
     logger.debug(f"Final merged config ({config_section}): {final_config}")
     return final_config
@@ -548,23 +602,37 @@ def add_common_args(parser: argparse.ArgumentParser):
 
 
 def add_generation_args(parser: argparse.ArgumentParser):
-    parser.add_argument("--dataset", default=DEFAULT_DATASET, choices=list(Datasets.registry.keys()), help=f"Dataset name (default: {DEFAULT_DATASET})")
-    parser.add_argument("--cutoff", type=int, default=DEFAULT_CUTOFF, help=f"Number of samples (-1 for all, default: {DEFAULT_CUTOFF})")
-    parser.add_argument("--provider", choices=["openai", "ollama"], default=DEFAULT_PROVIDER, help=f"LLM provider for generation (default: {DEFAULT_PROVIDER})")
-    parser.add_argument("--model-name", default=None, help="Generation model name (overrides config, default depends on provider)")
-    parser.add_argument("--use-async", action="store_true", default=False, help="Run generation asynchronously (overrides config)")
-    parser.add_argument("--concurrency", type=int, default=DEFAULT_CONCURRENCY, help=f"Max concurrent async requests (default: {DEFAULT_CONCURRENCY})")
-    parser.add_argument("--use-json-strategies", action="store_true", default=False, help="Use JSON mode within strategies (overrides config)")
-    parser.add_argument("--output-file", default=DEFAULT_OUTPUT_FILE, help=f"File to save raw generation results (default: {DEFAULT_OUTPUT_FILE})")
+    parser.add_argument("--dataset", default=DEFAULT_DATASET, choices=list(Datasets.registry.keys()),
+                        help=f"Dataset name (overrides config, default: {DEFAULT_DATASET})")
+    parser.add_argument("--cutoff", type=int, default=DEFAULT_CUTOFF,
+                        help=f"Number of samples (-1 for all, overrides config, default: {DEFAULT_CUTOFF})")
+    parser.add_argument("--provider", choices=["openai", "ollama"], default=DEFAULT_PROVIDER,
+                        help=f"LLM provider for generation (overrides config, default: {DEFAULT_PROVIDER})")
+    parser.add_argument("--model-name", default=None,
+                        help="Generation model name (overrides config, default depends on provider)")
+    parser.add_argument("--use-async", action='store_true', default=False,
+                        help="Run generation asynchronously (overrides config)")
+    parser.add_argument("--concurrency", type=int, default=DEFAULT_CONCURRENCY,
+                        help=f"Max concurrent async requests (overrides config, default: {DEFAULT_CONCURRENCY})")
+    parser.add_argument("--use-json-strategies", action='store_true', default=False,
+                        help="Use JSON mode within strategies (overrides config)")
+    parser.add_argument("--output-file", default=DEFAULT_OUTPUT_FILE,
+                        help=f"File to save raw generation results (overrides config, default: {DEFAULT_OUTPUT_FILE})")
 
 
 def add_evaluation_args(parser: argparse.ArgumentParser):
-    parser.add_argument("--input-file", default=None, help="Path to the JSONL file with generation results (overrides config default)")
-    parser.add_argument("--extractor-type", choices=["heuristic", "llm"], default=DEFAULT_EXTRACTOR_TYPE, help=f"Extractor type (default: {DEFAULT_EXTRACTOR_TYPE})")
-    parser.add_argument("--provider", choices=["openai", "ollama"], default=DEFAULT_PROVIDER, help=f"LLM provider for LLM-based extraction (default: {DEFAULT_PROVIDER})")
-    parser.add_argument("--model-name", default=None, help="Model name for LLM-based extraction (overrides config, default depends on provider)")
-    parser.add_argument("--concurrency", type=int, default=DEFAULT_CONCURRENCY, help=f"Max concurrent async requests for LLM extractor (default: {DEFAULT_CONCURRENCY})")
-    parser.add_argument("--show-details", action="store_true", default=False, help="Show detailed results per question (overrides config).")
+    parser.add_argument("--input-file", default=None,
+                        help="Path to the JSONL file with generation results (overrides config default)")
+    parser.add_argument("--extractor-type", choices=["heuristic", "llm"], default=DEFAULT_EXTRACTOR_TYPE,
+                        help=f"Extractor type (overrides config, default: {DEFAULT_EXTRACTOR_TYPE})")
+    parser.add_argument("--provider", choices=["openai", "ollama"], default=DEFAULT_PROVIDER,
+                        help=f"LLM provider for LLM-based extraction (overrides config, default: {DEFAULT_PROVIDER})")
+    parser.add_argument("--model-name", default=None,
+                        help="Model name for LLM-based extraction (overrides config, default depends on provider)")
+    parser.add_argument("--concurrency", type=int, default=DEFAULT_CONCURRENCY,
+                        help=f"Max concurrent async requests for LLM extractor (overrides config, default: {DEFAULT_CONCURRENCY})")
+    parser.add_argument("--show-details", action='store_true', default=False,
+                        help="Show detailed results per question (overrides config).")
 
 
 logger_samples = logging.getLogger("dataset_sampler")
@@ -609,6 +677,7 @@ def show_dataset_samples(ds_name: str, num_samples: int = 5):
             print("-" * 80)
     except Exception as e:
         logger_samples.error(f"Failed to process or display samples for dataset '{ds_name}': {e}", exc_info=True)
+
 
 if __name__ == "__main__":
     setup_logging()

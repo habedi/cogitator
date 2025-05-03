@@ -30,8 +30,8 @@ async def main_async(args: argparse.Namespace) -> None:
     tasks = [tot.run_async(q, semaphore=semaphore) for q in QUESTIONS]
     answers = await asyncio.gather(*tasks)
 
-    for q, a in zip(QUESTIONS, answers):
-        print(f"Q: {q}\nA: {a}\n")
+    for _q, _a in zip(QUESTIONS, answers, strict=False):
+        pass
 
 
 def main_sync(args: argparse.Namespace) -> None:
@@ -40,8 +40,7 @@ def main_sync(args: argparse.Namespace) -> None:
 
     logger.info("Running TreeOfThoughts synchronously...")
     for q in QUESTIONS:
-        a = tot.run(q)
-        print(f"Q: {q}\nA: {a}\n")
+        tot.run(q)
 
 
 if __name__ == "__main__":

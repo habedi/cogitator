@@ -6,10 +6,11 @@ generation:
   dataset: "gsm8k"
   cutoff: 50
   provider: "ollama"
-  model_name: null
+  model_name: "gemma3:4b"
+  ollama_host: null # Or Ollama host:port; only relevant if provider is "ollama"
   use_async: true
   concurrency: 3
-  use_json_strategies: false # Controls default for LtM format, GoT format, SC extraction
+  use_json_strategies: false
   output_file: "benchmark_results.jsonl"
   llm_params:
     max_tokens: 1024
@@ -17,25 +18,22 @@ generation:
     temperature: 0.7
 
 evaluation:
-  input_file: null # Defaults to generation.output_file
+  input_file: "benchmark_results.jsonl"
   extractor:
-    type: "heuristic" # 'heuristic' or 'llm'
-    provider: "ollama" # 'ollama' or 'openai'
-    model_name: null
-    # llm_params:
-    #   max_tokens: 64
-    #   seed: 42
-    #   temperature: 0.1
+    type: "heuristic" # Can be "llm"
+    provider: "ollama" # Only relevant if type is "llm"
+    model_name: "gemma3:4b" # Only relevant if type is "llm"
+    ollama_host: "0.0.0.0:11434" # Or null; only relevant if type is "llm"
+    llm_params: # Only relevant if type is "llm"
+      max_tokens: 64
+      seed: 42
+      temperature: 0.1
   show_details: false
-  concurrency: 3 # Concurrency specifically for evaluation LLM extractor
+  concurrency: 3 # Concurrency for LLM extractor if used
 
-# --- Strategy-Specific Parameters ---
-strategies:
-  # If a strategy section exists, it's enabled by default.
-  # Add 'enabled: false' to disable it.
+strategies: # CoT methods to benchmark
   ZeroShotCoT:
     enabled: true
-    # No specific params other than llm_params
 
   AutoCoT:
     enabled: true
@@ -43,7 +41,7 @@ strategies:
     max_q_tokens: 100
     max_steps: 8
     max_retries: 3
-    # prompt_template: "Let's think step-by-step." # Optional override
+    prompt_template: "Let's think step-by-step."
 
   CDWCoT:
     enabled: true
@@ -53,7 +51,6 @@ strategies:
     sample_size: 10
     max_grad_norm: 1.0
     init_pool_retries: 1
-    # Specific training parameters for CDWCoT's train/train_async methods
     train_params:
       epochs: 5
       patience: 2
@@ -62,18 +59,14 @@ strategies:
   SelfConsistency:
     enabled: true
     n_samples: 10
-    temperature: 0.8 # Overrides global llm_params.temperature for SC calls
-    # stop: ["\n\n"] # Example: list of stop sequences
-    # internal_extraction_format: "json" # Overrides generation.use_json_strategies for SC only
+    temperature: 0.8
+    stop: [ "\n\n" ]
+    internal_extraction_format: "json" # or "heuristic"
 
   LeastToMost:
     enabled: true
     max_subqs: 10
-    # intermediate_output_format: "json" # Overrides generation.use_json_strategies for LtM only
-    # Templates can be overridden here if needed:
-    # decompose_prompt_template: "..."
-    # solve_prompt_template: "..."
-    # final_answer_prompt_template: "..."
+    intermediate_output_format: "json" # or "text"
 
   TreeOfThoughts:
     enabled: true
@@ -81,7 +74,6 @@ strategies:
     num_branches: 3
     sims: 10
     c_puct: 1.0
-    # Templates can be overridden here
 
   GraphOfThoughts:
     enabled: true
@@ -89,5 +81,4 @@ strategies:
     num_branches: 3
     beam_width: 5
     merge_threshold: 0.9
-    # final_answer_format: "json" # Overrides generation.use_json_strategies for GoT only
-    # Templates can be overridden here
+    final_answer_format: "text" # or "json"

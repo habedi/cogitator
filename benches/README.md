@@ -32,19 +32,20 @@ and their capabilities. Use `ollama list` to see the available models for the `o
 
 The `run.py` script executes the following steps:
 
-1. **Configuration:** Loads settings from `benches.yml` and merges them with command-line arguments (CLI > YAML >
-   Defaults).
+1. **Configuration:** Loads settings from `benches.yml` and merges them with command-line arguments (CLI > YAML > Defaults).
 2. **Dataset Loading:** Loads the specified dataset subset based on the final configuration.
 3. **Model & CoT Methods:** Sets up the language model and instances of enabled CoT methods, configured according to
    `benches.yml`.
 4. **Setup Phase (One-Time Cost per Run):** Before generating answers for the test questions, methods that need fitting
-   or training (like AutoCoT, CDWCoT) perform this step *once* using the loaded dataset samples and configured
+   or training (like AutoCoT and CDWCoT) perform this step *once* using the loaded dataset samples and configured
    parameters.
 5. **Generation Phase (Per Question):** The script iterates through each loaded question:
     * For each question, it executes all *enabled* CoT methods using their configured parameters.
     * If run synchronously, methods execute one after another. If async, calls run concurrently.
     * The raw text output from the LLM and the execution time are recorded.
 6. **Output:** Results are saved line-by-line in JSONL format to the specified output file.
+
+See `poetry run python benches/run.py --help` for seeing all available options.
 
 ### Evaluation (`evaluate.py`)
 
@@ -61,32 +62,47 @@ table. See `poetry run python benches/evaluate.py --help` for evaluation-specifi
 
 ### Configuration (`benches.yml`)
 
-Benchmark runs can be configured using command-line arguments or a `benches.yml` file placed in the project root.
-
+Benchmark runs are configured using `benches.yml` in the project root, combined with command-line arguments.
 **Configuration Precedence:**
 
-1. **Command-Line Arguments:** Flags provided directly when running `run.py` or `evaluate.py` take the highest
-   precedence for global settings like dataset, provider, cutoff, etc.
-2. **`benches.yml`:** If a global parameter is not specified on the command line, its value is taken from the `common`,
-   `generation`, or `evaluation` sections of `benches.yml`. Strategy-specific parameters (like `n_demos` for `AutoCoT`)
-   are configured under the `strategies` section. CLI flags do *not* override strategy-specific parameters inside the
-   YAML.
-3. **Code Defaults:** If a parameter is not specified via CLI or YAML, a default value defined in the code is used.
+1. **Command-Line Arguments:** Highest priority (e.g., `--dataset`, `--provider`).
+2. **`benches.yml`:** Values from this file are used if not specified via CLI.
+3. **Code Defaults:** Lowest priority, used if not set in CLI or YAML.
 
 **YAML Structure:**
 
-* **`common`**: Shared settings like `debug`, `openai_key_env_var`.
-* **`generation`**: Settings for the generation phase (`run.py`) like `dataset`, `cutoff`, `provider`, `model_name`,
-  `use_async`, `concurrency`, `use_json_strategies`, `output_file`, and global `llm_params` (like `max_tokens`, `seed`).
-* **`evaluation`**: Settings for the evaluation phase (`evaluate.py`) like `input_file`, `extractor` settings (including
-  its own `provider`, `model_name`, `llm_params`), `show_details`, and `concurrency` for the extractor LLM.
+* **`common`**: Shared settings.
+    * `debug`: `true` or `false` for verbose logging.
+    * `openai_key_env_var`: Name of the environment variable holding the OpenAI key.
+* **`generation`**: Settings for the generation script (`run.py`).
+    * `dataset`: Name of the dataset (e.g., `gsm8k`).
+    * `cutoff`: Max number of samples to use (-1 for all).
+    * `provider`: `ollama` or `openai`.
+    * `model_name`: Specific model for the provider.
+    * `ollama_host`: (**Optional**) Specify the host address for the Ollama server (e.g., `http://192.168.1.100:11434`). If `null`
+      or omitted, uses `OLLAMA_HOST` env var or defaults to `http://localhost:11434`.
+    * `use_async`: `true` to run LLM calls concurrently.
+    * `concurrency`: Max parallel requests for async runs.
+    * `use_json_strategies`: `true` or `false`. Default for strategies supporting JSON output (can be overridden per strategy).
+    * `output_file`: Path to save raw results (JSONL).
+    * `llm_params`: Global LLM settings (`max_tokens`, `seed`, `temperature`) applied unless overridden per strategy.
+* **`evaluation`**: Settings for the evaluation script (`evaluate.py`).
+    * `input_file`: Path to the results JSONL file (defaults to `generation.output_file`).
+    * `extractor`: Configures how final answers are extracted.
+        * `type`: `heuristic` or `llm`.
+        * `provider`, `model_name`: Settings for the LLM extractor if `type` is `llm`.
+        * `ollama_host`: (**Optional**) Specify the Ollama host *for the extractor LLM*, if using `type: llm` and
+          `provider: ollama`. Defaults apply if null/omitted.
+        * `llm_params`: Settings for the LLM extractor if `type` is `llm`.
+    * `show_details`: `true` to print per-question evaluation details.
+    * `concurrency`: Max parallel requests for the LLM extractor.
 * **`strategies`**: Configure individual CoT methods.
-    * Each key is the class name (e.g., `AutoCoT`, `SelfConsistency`).
-    * If a strategy section exists, the strategy is run by default. Add `enabled: false` inside its section to disable
-      it.
-    * Specify strategy-specific parameters (e.g., `n_demos`, `pool_size`, `n_samples`, `max_depth`).
-    * Strategy-specific LLM parameters (like `temperature` for `SelfConsistency`) set here will override the global
-      `generation.llm_params` for that strategy's execution.
+    * Each key is the strategy's class name (e.g., `AutoCoT`).
+    * Including a section enables the strategy by default. Add `enabled: false` to disable.
+    * Set strategy-specific parameters (e.g., `n_demos`, `pool_size`, `n_samples`, `max_depth`).
+    * Strategy-specific LLM parameters (like `temperature` for `SelfConsistency`) or format choices (`internal_extraction_format`,
+      `intermediate_output_format`, `final_answer_format`) set here override global settings from the `generation` section for
+      that specific strategy.
 
 See the example `benches.yml` in the repository for detailed options.
 
@@ -117,8 +133,9 @@ pip install cogitator[dev]
 # Or poetry install --with dev
 ```
 
-Additionally, any model used in the benchmarks must be available. For Ollama, pull models using
-`ollama pull <model_name>`. Ensure your OpenAI key is set correctly if using that provider.
+Additionally, any model used in the benchmarks must be available.
+For Ollama, pull models using `ollama pull <model_name>`.
+Make sure the OpenAI key is set correctly if using the OpenAI models.
 
 ### More Examples
 
@@ -130,7 +147,7 @@ poetry run python benches/run.py --output-file my_ollama_results.jsonl
 poetry run python benches/evaluate.py --input-file my_ollama_results.jsonl --show-details
 
 # Evaluate the results using LLM extractor (override benches.yml extractor setting)
-poetry run python benches/evaluate.py --extractor-type llm --provider ollama --model-name qwen2:7b --input-file my_ollama_results.jsonl
+poetry run python benches/evaluate.py --extractor-type llm --provider ollama --model-name qwen3:14b --input-file my_ollama_results.jsonl
 
 # Run specifically with OpenAI, overriding YAML if necessary
 poetry run python benches/run.py --provider openai --model-name gpt-4o-mini --dataset csqa --cutoff 10 --use-async --output-file my_openai_results.jsonl
@@ -147,7 +164,7 @@ reported separately.
 
 ## Datasets
 
-The following datasets can be used in the benchmarking process:
+The following datasets can be used for values in the `--dataset` argument of the `run.py` script.
 
 | Dataset Name | Source Link                                                                          | Category Tags             | Description                                       |
 |:-------------|:-------------------------------------------------------------------------------------|:--------------------------|:--------------------------------------------------|

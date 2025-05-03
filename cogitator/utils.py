@@ -16,5 +16,5 @@ def exact_match(pred: str, gold: str) -> bool:
 def accuracy(preds: list[str], golds: list[str]) -> float:
     if not golds:
         return 0.0
-    matches = sum(exact_match(p, g) for p, g in zip(preds, golds))
+    matches = sum(exact_match(p, g) for p, g in zip(preds, golds, strict=False))
     return matches / len(golds)

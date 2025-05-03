@@ -504,8 +504,6 @@ class OpenAILLM(BaseLLM):
                     yield delta.content
 
 
-# --- OllamaLLM Class ---
-# ... (Keep OllamaLLM class as it was in the previous correct version) ...
 class OllamaLLM(BaseLLM):
     def __init__(
         self,

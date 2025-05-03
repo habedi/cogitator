@@ -25,7 +25,7 @@ def _strip_fences(text: str) -> str:
 
 class GraphOfThoughts:
     class _Node:
-        __slots__ = ("id", "steps", "parents", "children", "embed", "visits", "score_sum", "data")
+        __slots__ = ("children", "data", "embed", "id", "parents", "score_sum", "steps", "visits")
         _id_counter = 0
 
         def __init__(
@@ -302,7 +302,7 @@ class GraphOfThoughts:
             for node in frontier:
                 for step in expansion_results.get(node.id, []):
                     new_node = self._Node(
-                        node.steps + [step], embedder=self.embedder, parents=[node]
+                        [*node.steps, step], embedder=self.embedder, parents=[node]
                     )
                     similar = self._find_similar_node(new_node, list(all_nodes.values()))
 
@@ -466,7 +466,7 @@ class GraphOfThoughts:
 
                 for step in steps:
                     new_node = self._Node(
-                        parent.steps + [step], embedder=self.embedder, parents=[parent]
+                        [*parent.steps, step], embedder=self.embedder, parents=[parent]
                     )
                     similar = self._find_similar_node(new_node, list(all_nodes.values()))
                     if similar:

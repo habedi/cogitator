@@ -77,7 +77,7 @@ class CDWCoT:
                 continue
 
             k = (
-                min(len(idxs), max(1, int(round(len(idxs) / N * self.pool_size))))
+                min(len(idxs), max(1, round(len(idxs) / N * self.pool_size)))
                 if self.pool_size > 0
                 else 0
             )

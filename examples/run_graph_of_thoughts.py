@@ -37,8 +37,8 @@ async def main_async(args: argparse.Namespace) -> None:
     tasks = [got.run_async(q, semaphore=semaphore) for q in QUESTIONS]
     answers = await asyncio.gather(*tasks)
 
-    for q, a in zip(QUESTIONS, answers):
-        print(f"Q: {q}\nA: {a}\n")
+    for _q, _a in zip(QUESTIONS, answers, strict=False):
+        pass
 
 
 def main_sync(args: argparse.Namespace) -> None:
@@ -47,8 +47,7 @@ def main_sync(args: argparse.Namespace) -> None:
 
     logger.info("Running GraphOfThoughts synchronously...")
     for q in QUESTIONS:
-        a = got.run(q)
-        print(f"Q: {q}\nA: {a}\n")
+        got.run(q)
 
 
 if __name__ == "__main__":

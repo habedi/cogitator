@@ -50,8 +50,8 @@ async def main_async(args: argparse.Namespace) -> None:
     tasks = [auto.run_async(q) for q in TEST_QUESTIONS]
     answers = await asyncio.gather(*tasks)
 
-    for q, a in zip(TEST_QUESTIONS, answers):
-        print(f"Q: {q}\nA: {a}\n")
+    for _q, _a in zip(TEST_QUESTIONS, answers, strict=False):
+        pass
 
 
 def main_sync(args: argparse.Namespace) -> None:
@@ -63,8 +63,7 @@ def main_sync(args: argparse.Namespace) -> None:
 
     logger.info("Running test questions synchronously...")
     for q in TEST_QUESTIONS:
-        result = auto.run(q)
-        print(f"Q: {q}\nA: {result}\n")
+        auto.run(q)
 
 
 if __name__ == "__main__":

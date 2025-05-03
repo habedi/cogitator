@@ -31,28 +31,28 @@ except importlib.metadata.PackageNotFoundError:
 __all__ = [
     # Chain of Thought methods and frameworks
     "AutoCoT",
-    "CDWCoT",
-    "GraphOfThoughts",
-    "LeastToMost",
-    "SelfConsistency",
-    "TreeOfThoughts",
-    # Model abstractions
-    "BaseLLM",
-    "OllamaLLM",
-    "OpenAILLM",
-    # Schemas
-    "LTMDecomposition",
-    "ThoughtExpansion",
-    "EvaluationResult",
-    "ExtractedAnswer",
+    "BaseClusterer",
     # Embedding and Clustering
     "BaseEmbedder",
-    "SentenceTransformerEmbedder",
-    "BaseClusterer",
+    # Model abstractions
+    "BaseLLM",
+    "CDWCoT",
+    "EvaluationResult",
+    "ExtractedAnswer",
+    "GraphOfThoughts",
     "KMeansClusterer",
+    # Schemas
+    "LTMDecomposition",
+    "LeastToMost",
+    "OllamaLLM",
+    "OpenAILLM",
+    "SelfConsistency",
+    "SentenceTransformerEmbedder",
+    "ThoughtExpansion",
+    "TreeOfThoughts",
+    "accuracy",
+    "approx_token_length",
     # Utils (bunch of useful stuff)
     "count_steps",
-    "approx_token_length",
     "exact_match",
-    "accuracy",
 ]
