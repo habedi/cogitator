@@ -423,8 +423,7 @@ evaluation: {extractor: {type: heuristic}}
     assert merged_config['extractor_type'] == "heuristic"
 
 
-def test_load_config_malformed_yaml(tmp_path, mock_args_namespace_factory, generation_parser,
-                                    caplog):
+def test_load_config_malformed_yaml(tmp_path, mock_args_namespace_factory, generation_parser, caplog):
     args = mock_args_namespace_factory()
     yaml_content = "generation: { provider: openai, model_name: [invalid"
     config_file = tmp_path / "malformed.yml"

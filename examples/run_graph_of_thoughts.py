@@ -27,7 +27,7 @@ QUESTIONS = [
 ]
 
 
-async def main_async(args: argparse.Namespace) -> None:
+async def main_async(args: argparse.Namespace):
     llm = get_llm(args.provider, args.model_name, args.openai_key)
     got = setup_got(llm)
     semaphore = asyncio.Semaphore(5)
@@ -36,17 +36,18 @@ async def main_async(args: argparse.Namespace) -> None:
     tasks = [got.run_async(q, semaphore=semaphore) for q in QUESTIONS]
     answers = await asyncio.gather(*tasks)
 
-    for _q, _a in zip(QUESTIONS, answers, strict=False):
-        pass
+    for q, a in zip(QUESTIONS, answers):
+        print(f"Q: {q}\nA: {a}\n")
 
 
-def main_sync(args: argparse.Namespace) -> None:
+def main_sync(args: argparse.Namespace):
     llm = get_llm(args.provider, args.model_name, args.openai_key)
     got = setup_got(llm)
 
     logger.info("Running GraphOfThoughts synchronously...")
     for q in QUESTIONS:
-        got.run(q)
+        a = got.run(q)
+        print(f"Q: {q}\nA: {a}\n")
 
 
 if __name__ == "__main__":

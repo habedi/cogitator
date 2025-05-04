@@ -7,10 +7,10 @@ import numpy as np
 import pytest
 from pydantic import BaseModel
 
+from cogitator import BaseClusterer
+from cogitator import BaseEmbedder
 from cogitator import BaseLLM
-from cogitator.clustering import BaseClusterer
-from cogitator.embedding import BaseEmbedder
-from cogitator.schemas import (
+from cogitator import (
     EvaluationResult,
     ExtractedAnswer,
     LTMDecomposition,
@@ -278,8 +278,9 @@ class MockClusterer(BaseClusterer):
 @pytest.fixture
 def patch_embedding_clustering(monkeypatch):
     logger.debug("Patching embedding and clustering classes")
-    monkeypatch.setattr("cogitator.auto_cot.SentenceTransformerEmbedder", MockEmbedder)
-    monkeypatch.setattr("cogitator.auto_cot.KMeansClusterer", MockClusterer)
-    monkeypatch.setattr("cogitator.cdw_cot.SentenceTransformerEmbedder", MockEmbedder)
-    monkeypatch.setattr("cogitator.cdw_cot.KMeansClusterer", MockClusterer)
-    monkeypatch.setattr("cogitator.graph_of_thoughts.SentenceTransformerEmbedder", MockEmbedder)
+    monkeypatch.setattr("cogitator.strategies.auto_cot.SentenceTransformerEmbedder", MockEmbedder)
+    monkeypatch.setattr("cogitator.strategies.auto_cot.KMeansClusterer", MockClusterer)
+    monkeypatch.setattr("cogitator.strategies.cdw_cot.SentenceTransformerEmbedder", MockEmbedder)
+    monkeypatch.setattr("cogitator.strategies.cdw_cot.KMeansClusterer", MockClusterer)
+    monkeypatch.setattr("cogitator.strategies.graph_of_thoughts.SentenceTransformerEmbedder",
+                        MockEmbedder)

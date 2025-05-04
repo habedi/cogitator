@@ -4,8 +4,8 @@ import re
 from collections import Counter
 from typing import Any, AsyncIterator, Iterator, List, Literal, Optional
 
-from .model import BaseLLM
-from .schemas import ExtractedAnswer
+from ..model import BaseLLM
+from ..schemas import ExtractedAnswer
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +36,8 @@ class SelfConsistency:
             self.answer_extraction_prompt = (
                 answer_extraction_prompt
                 or "Analyze the following reasoning chain and extract the final numerical or short answer. "
-                "Return the result as a JSON object with a single key 'final_answer' containing the answer as a string.\n\n"
-                "Reasoning Chain:\n{cot}\n\nJSON Answer:"
+                   "Return the result as a JSON object with a single key 'final_answer' containing the answer as a string.\n\n"
+                   "Reasoning Chain:\n{cot}\n\nJSON Answer:"
             )
         else:
             self.answer_extraction_prompt = None
@@ -47,19 +47,43 @@ class SelfConsistency:
         for line in reversed(lines):
             text = line.strip().rstrip(".")
             if "=" in text:
-                return text.split("=", 1)[1].strip().lstrip("$").strip()
+                parts = text.split("=", 1)
+                if len(parts) > 1:
+                    answer = parts[1].strip().lstrip("$").strip()
+                    logger.debug(f"Heuristically extracted answer (equals): '{answer}'")
+                    return answer
             m0 = re.search(r"(?i)\bthe answer is\s+(\S+)", text)
             if m0:
-                return m0.group(1).lstrip("$").strip()
+                answer = m0.group(1).lstrip("$").strip()
+                logger.debug(f"Heuristically extracted answer (the answer is): '{answer}'")
+                return answer
             m1 = re.match(r"(?i)^(?:Answer|Final Answer|Ans)\b[: ]\s*(.+)$", text)
             if m1:
-                return m1.group(1).strip()
+                answer = m1.group(1).strip()
+                logger.debug(f"Heuristically extracted answer (Prefix): '{answer}'")
+                return answer
             m2 = re.match(r"^#+\s*([+-]?\d+(?:\.\d+)?)$", text)
             if m2:
-                return m2.group(1)
+                answer = m2.group(1)
+                logger.debug(f"Heuristically extracted answer (Header): '{answer}'")
+                return answer
+            m3 = re.match(r"^\*{1,2}A[: ]\s*(.+?)\*{0,2}$", text, re.IGNORECASE)
+            if m3:
+                answer = m3.group(1).strip()
+                logger.debug(f"Heuristically extracted answer (Markdown A:): '{answer}'")
+                return answer
+            m4 = re.search(r":\s*([+-]?\d+(?:\.\d+)?|[A-Za-z]+)\s*$", text)
+            if m4:
+                answer = m4.group(1).strip()
+                logger.debug(f"Heuristically extracted answer (Colon End): '{answer}'")
+                return answer
             if re.fullmatch(r"\$?[+-]?\d+(?:\.\d+)?", text):
-                return text.lstrip("$")
-        return lines[-1].strip() if lines else ""
+                answer = text.lstrip("$")
+                logger.debug(f"Heuristically extracted answer (Numeric Line): '{answer}'")
+                return answer
+        fallback_answer = lines[-1].strip() if lines else ""
+        logger.debug(f"Heuristically extracted answer (Fallback): '{fallback_answer}'")
+        return fallback_answer
 
     def _extract_answer_json(self, cot: str, **kwargs) -> str:
         if not self.answer_extraction_prompt:
@@ -77,9 +101,12 @@ class SelfConsistency:
                 seed=local_kwargs.pop("seed", self.seed),
                 **local_kwargs,
             )
-            return str(result.final_answer).strip()
+            answer = str(result.final_answer).strip()
+            logger.debug(f"JSON extracted answer: '{answer}'")
+            return answer
         except Exception as e:
             logger.error("JSON extraction failed: %s", e, exc_info=True)
+        logger.warning("JSON extraction failed, falling back to heuristic.")
         return self._extract_answer_heuristic(cot)
 
     async def _extract_answer_json_async(self, cot: str, **kwargs) -> str:
@@ -98,9 +125,12 @@ class SelfConsistency:
                 seed=local_kwargs.pop("seed", self.seed),
                 **local_kwargs,
             )
-            return str(result.final_answer).strip()
+            answer = str(result.final_answer).strip()
+            logger.debug(f"Async JSON extracted answer: '{answer}'")
+            return answer
         except Exception as e:
             logger.error("Async JSON extraction failed: %s", e, exc_info=True)
+        logger.warning("Async JSON extraction failed, falling back to heuristic.")
         return self._extract_answer_heuristic(cot)
 
     def extract_answer(self, cot: str, **kwargs) -> str:
@@ -115,43 +145,48 @@ class SelfConsistency:
 
     def run(self, prompt: str, **kwargs) -> str:
         answers: List[str] = []
-        # Combine instance defaults with call-specific kwargs
         combined_kwargs = {**self.gen_kwargs, **kwargs}
 
         for i in range(self.n_samples):
             try:
-                # Pass temperature, max_tokens etc. from combined kwargs or defaults
                 iter_seed = (self.seed + i) if self.seed is not None else None
+                current_gen_kwargs = combined_kwargs.copy()
                 cot = self.llm.generate(
                     prompt,
-                    temperature=combined_kwargs.pop("temperature", self.temperature),
-                    max_tokens=combined_kwargs.pop("max_tokens", self.max_tokens),
-                    stop=combined_kwargs.pop("stop", self.stop),
+                    temperature=current_gen_kwargs.pop("temperature", self.temperature),
+                    max_tokens=current_gen_kwargs.pop("max_tokens", self.max_tokens),
+                    stop=current_gen_kwargs.pop("stop", self.stop),
                     seed=iter_seed,
-                    **combined_kwargs,  # Pass remaining specific args
+                    **current_gen_kwargs,
                 )
-                ans = self.extract_answer(
-                    cot, **kwargs
-                )  # Pass kwargs for potential JSON extraction
+                logger.debug(f"Raw CoT sample {i}: {cot}")
+                ans = self.extract_answer(cot, **kwargs)
                 if ans:
                     answers.append(ans)
+                else:
+                    logger.debug(f"Sample {i} produced empty answer after extraction.")
             except Exception as e:
                 logger.error(f"Error during SC sample {i}: {e}", exc_info=True)
 
         if not answers:
             logger.warning("SelfConsistency generated no valid answers.")
             return ""
-        top_answer, _ = Counter(answers).most_common(1)[0]
-        return top_answer
+
+        try:
+            count = Counter(answers)
+            top_answer, _ = count.most_common(1)[0]
+            logger.debug(f"SelfConsistency vote counts: {count}")
+            return top_answer
+        except IndexError:
+            logger.error("Could not determine most common answer despite having answers.")
+            return ""
 
     async def run_async(
         self, prompt: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs
     ) -> str:
-        # Combine instance defaults with call-specific kwargs
         combined_kwargs = {**self.gen_kwargs, **kwargs}
 
         async def sample(i: int) -> Optional[str]:
-            # Capture kwargs for this specific sample call
             sample_kwargs = combined_kwargs.copy()
             iter_seed = (self.seed + i) if self.seed is not None else None
             gen_args = {
@@ -159,16 +194,19 @@ class SelfConsistency:
                 "max_tokens": sample_kwargs.pop("max_tokens", self.max_tokens),
                 "stop": sample_kwargs.pop("stop", self.stop),
                 "seed": iter_seed,
-                **sample_kwargs,  # Pass remaining specific args
+                **sample_kwargs,
             }
-            extraction_kwargs = kwargs.copy()  # Use original kwargs for extraction
+            extraction_kwargs = kwargs.copy()
 
             if semaphore:
                 await semaphore.acquire()
             try:
                 cot = await self.llm.generate_async(prompt, **gen_args)
-                # Pass extraction_kwargs for potential JSON extraction config
-                return await self.extract_answer_async(cot, **extraction_kwargs)
+                logger.debug(f"Raw async CoT sample {i}: {cot}")
+                ans = await self.extract_answer_async(cot, **extraction_kwargs)
+                if not ans:
+                    logger.debug(f"Async sample {i} produced empty answer after extraction.")
+                return ans
             except Exception as e:
                 logger.error(f"Error during async SC sample {i}: {e}", exc_info=True)
                 return None
@@ -177,12 +215,19 @@ class SelfConsistency:
                     semaphore.release()
 
         results = await asyncio.gather(*(sample(i) for i in range(self.n_samples)))
-        answers = [a for a in results if a]
+        answers = [a for a in results if a is not None and a != ""]
         if not answers:
             logger.warning("SelfConsistency (async) generated no valid answers.")
             return ""
-        top_answer, _ = Counter(answers).most_common(1)[0]
-        return top_answer
+
+        try:
+            count = Counter(answers)
+            top_answer, _ = count.most_common(1)[0]
+            logger.debug(f"SelfConsistency async vote counts: {count}")
+            return top_answer
+        except IndexError:
+            logger.error("Could not determine most common async answer despite having answers.")
+            return ""
 
     def run_stream(self, prompt: str) -> Iterator[str]:
         raise NotImplementedError("Streaming not supported for SelfConsistency.")

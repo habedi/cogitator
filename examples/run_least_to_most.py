@@ -15,7 +15,7 @@ QUESTIONS = [
 ]
 
 
-async def main_async(args: argparse.Namespace) -> None:
+async def main_async(args: argparse.Namespace):
     llm = get_llm(args.provider, args.model_name, args.openai_key)
     ltm = LeastToMost(llm, intermediate_output_format="json")
     semaphore = asyncio.Semaphore(5)
@@ -24,17 +24,18 @@ async def main_async(args: argparse.Namespace) -> None:
     tasks = [ltm.run_async(q, semaphore=semaphore) for q in QUESTIONS]
     answers = await asyncio.gather(*tasks)
 
-    for _q, _a in zip(QUESTIONS, answers, strict=False):
-        pass
+    for q, a in zip(QUESTIONS, answers):
+        print(f"Q: {q}\nA: {a}\n")
 
 
-def main_sync(args: argparse.Namespace) -> None:
+def main_sync(args: argparse.Namespace):
     llm = get_llm(args.provider, args.model_name, args.openai_key)
     ltm = LeastToMost(llm, intermediate_output_format="json")
 
     logger.info("Running LeastToMost synchronously...")
     for q in QUESTIONS:
-        ltm.run(q)
+        a = ltm.run(q)
+        print(f"Q: {q}\nA: {a}\n")
 
 
 if __name__ == "__main__":

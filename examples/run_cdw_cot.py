@@ -26,10 +26,11 @@ TRAIN_QUESTIONS = [
 ]
 TRAIN_ANSWERS = ["7", "4", "12", "4", "8", "5", "8", "15"]
 
-TEST_QUERIES = ["If you have 3 boxes of 5 pens each, how many pens?", "Solve for y: y - 2 = 4"]
+QUESTIONS = ["If you have 3 boxes of 5 pens each, how many pens?",
+             "Solve for y: y - 2 = 4"]
 
 
-async def main_async(args: argparse.Namespace) -> None:
+async def main_async(args: argparse.Namespace):
     llm = get_llm(args.provider, args.model_name, args.openai_key)
     cdw = setup_cdw_cot(llm)
     semaphore = asyncio.Semaphore(5)
@@ -40,15 +41,15 @@ async def main_async(args: argparse.Namespace) -> None:
         logger.info("Training CDW-CoT asynchronously...")
         await cdw.train_async(val_split=0.4, epochs=5, patience=3, semaphore=semaphore)
         logger.info("Running test questions asynchronously...")
-        tasks = [cdw.run_async(q, semaphore=semaphore) for q in TEST_QUERIES]
+        tasks = [cdw.run_async(q, semaphore=semaphore) for q in QUESTIONS]
         answers = await asyncio.gather(*tasks)
-        for _q, _a in zip(TEST_QUERIES, answers, strict=False):
-            pass
+        for q, a in zip(QUESTIONS, answers):
+            print(f"Q: {q}\nA: {a}\n")
     except Exception as e:
         logger.error(f"CDW-CoT async example failed: {e}", exc_info=True)
 
 
-def main_sync(args: argparse.Namespace) -> None:
+def main_sync(args: argparse.Namespace):
     llm = get_llm(args.provider, args.model_name, args.openai_key)
     cdw = setup_cdw_cot(llm)
 
@@ -58,8 +59,9 @@ def main_sync(args: argparse.Namespace) -> None:
         logger.info("Training CDW-CoT synchronously...")
         cdw.train(val_split=0.4, epochs=5, patience=3)
         logger.info("Running test questions synchronously...")
-        for q in TEST_QUERIES:
-            cdw.run(q)
+        for q in QUESTIONS:
+            out = cdw.run(q)
+            print(f"Q: {q}\nA: {out}\n")
     except Exception as e:
         logger.error(f"CDW-CoT sync example failed: {e}", exc_info=True)
 

@@ -6,9 +6,9 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 
-from .embedding import BaseEmbedder, SentenceTransformerEmbedder
-from .model import BaseLLM
-from .schemas import EvaluationResult, ExtractedAnswer
+from ..embedding import BaseEmbedder, SentenceTransformerEmbedder
+from ..model import BaseLLM
+from ..schemas import EvaluationResult, ExtractedAnswer
 
 logger = logging.getLogger(__name__)
 

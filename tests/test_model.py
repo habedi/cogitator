@@ -1,9 +1,11 @@
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, AsyncMock
 
 import pytest
 from pydantic import BaseModel, Field
 
-from cogitator.model import BaseLLM, OpenAILLM, OllamaLLM
+from cogitator import BaseLLM
+from cogitator import OllamaLLM
+from cogitator import OpenAILLM
 
 
 class DummySchema(BaseModel):
@@ -21,8 +23,8 @@ def mock_openai_clients(mocker):
     mock_async_client = AsyncMock()
     mock_sync_client.chat.completions.create = MagicMock()
     mock_async_client.chat.completions.create = AsyncMock()
-    mocker.patch("openai.OpenAI", return_value=mock_sync_client)
-    mocker.patch("openai.AsyncOpenAI", return_value=mock_async_client)
+    mocker.patch("cogitator.model.openai.SyncOpenAI", return_value=mock_sync_client)
+    mocker.patch("cogitator.model.openai.AsyncOpenAI", return_value=mock_async_client)
     return mock_sync_client, mock_async_client
 
 
@@ -33,9 +35,8 @@ def mock_ollama_clients(mocker):
     mock_sync_client.chat = MagicMock()
     mock_async_client.chat = AsyncMock()
     mock_sync_client.list = MagicMock(return_value={'models': []})
-    mocker.patch("cogitator.model.Client", new_callable=MagicMock, return_value=mock_sync_client)
-    mocker.patch("cogitator.model.AsyncClient", new_callable=AsyncMock,
-                 return_value=mock_async_client)
+    mocker.patch("cogitator.model.ollama.Client", new_callable=MagicMock, return_value=mock_sync_client)
+    mocker.patch("cogitator.model.ollama.AsyncClient", return_value=mock_async_client)
     return mock_sync_client, mock_async_client
 
 
@@ -58,10 +59,8 @@ def test_base_llm_abstract_methods():
     assert hasattr(instance, "generate")
 
 
-def test_extract_json_block():
-    with patch("cogitator.model.Client") as MockClient:
-        MockClient.return_value.list.return_value = {'models': []}
-        llm = OllamaLLM(model="dummy")
+def test_extract_json_block(mock_ollama_clients):
+    llm = OllamaLLM(model="dummy")
 
     text_fence = "```json\n{\"key\": \"value\"}\n```"
     text_fence_no_lang = "```\n{\"key\": \"value2\"}\n```"
@@ -83,38 +82,36 @@ def test_extract_json_block():
 
 
 @pytest.mark.parametrize(
-    "model_name, expected_mode, expect_format_present, expect_additional_props_false", [
-        ("gpt-4o", "json_schema", True, True),
-        ("gpt-4o-mini", "json_schema", True, True),
-        ("gpt-4-turbo", "json_object", True, False),
-        ("gpt-3.5-turbo-1106", "json_object", True, False),
-        ("gpt-3.5-turbo-0613", "json_schema", True, False),
-        ("unknown-model", "json_schema", True, False),
+    "model_name, expected_mode, expect_format_present, expect_additional_props", [
+        ("gpt-4o", "json_schema", True, False),
+        ("gpt-4o-mini", "json_schema", True, False),
+        ("gpt-4-turbo", "json_object", True, None),
+        ("gpt-3.5-turbo-1106", "json_object", True, None),
+        ("gpt-3.5-turbo-0613", "json_schema", True, None),
+        ("unknown-model", "json_schema", True, None),
     ])
 def test_openai_prepare_api_params_json_modes(mock_openai_clients, model_name, expected_mode,
-                                              expect_format_present, expect_additional_props_false):
+                                              expect_format_present, expect_additional_props):
     llm = OpenAILLM(api_key="dummy_key", model=model_name)
     params, mode = llm._prepare_api_params(is_json_mode=True, response_schema=DummySchema)
 
     if expect_format_present:
         assert "response_format" in params
+        rf = params["response_format"]
+        assert rf["type"] == expected_mode
         if expected_mode == "json_schema":
-            assert params["response_format"]["type"] == "json_schema"
-            assert "json_schema" in params["response_format"]
-            assert params["response_format"]["json_schema"]["name"] == "DummySchema"
-            if expect_additional_props_false:
-                assert params["response_format"]["json_schema"]["schema"].get(
-                    "additionalProperties") is False
-            else:
-                assert params["response_format"]["json_schema"]["schema"].get(
-                    "additionalProperties") is not False
+            assert "json_schema" in rf
+            assert rf["json_schema"]["name"] == "DummySchema"
+            schema = rf["json_schema"]["schema"]
+            assert schema.get("additionalProperties") is expect_additional_props
         elif expected_mode == "json_object":
-            assert params["response_format"]["type"] == "json_object"
-            assert "json_schema" not in params["response_format"]
+            assert "json_schema" not in rf
+            assert expect_additional_props is None
     else:
         assert "response_format" not in params
+        assert expect_additional_props is None
 
-    assert mode == expected_mode if expect_format_present else mode is None
+    assert mode == expected_mode
 
 
 def test_openai_prepare_api_params_no_schema_json_mode(mock_openai_clients):
@@ -145,37 +142,23 @@ def test_openai_prepare_api_params_schema_generation_fails(mock_openai_clients, 
     assert mode_no_fallback is None
 
 
-def test_ollama_init_success(mocker):
-    mock_sync = MagicMock()
-    mock_async = AsyncMock()
-    mock_sync.list = MagicMock(return_value={'models': []})
+def test_ollama_init_success(mock_ollama_clients):
+    mock_sync, mock_async = mock_ollama_clients
+    llm = OllamaLLM(model="ollama-test", ollama_host="http://testhost:11434")
+    assert llm.model == "ollama-test"
+    assert llm.host == "http://testhost:11434"
+    assert llm._client == mock_sync
+    assert llm._async_client == mock_async
 
-    # Using local patch with return_value as it seemed most reliable for sync
-    with patch("cogitator.model.Client", return_value=mock_sync) as patched_client, \
-        patch("cogitator.model.AsyncClient", return_value=mock_async) as patched_async_client:
-        llm = OllamaLLM(model="ollama-test", ollama_host="http://testhost:11434")
-        assert llm.model == "ollama-test"
-        assert llm.host == "http://testhost:11434"
-
-        # Check sync client
-        assert isinstance(llm._client, MagicMock)
-        assert llm._client == mock_sync
-
-        # --- FIX: Avoid isinstance check for AsyncMock, just check identity ---
-        # This assumes the patch mechanism *should* assign the mock object directly.
-        # If this fails, it points to a very subtle patching/mocking issue.
-        assert llm._async_client == mock_async
-        # --- End FIX ---
-
-        # Verify constructors were called
-        patched_client.assert_called_once_with(host="http://testhost:11434")
-        patched_async_client.assert_called_once_with(host="http://testhost:11434")
+    # Verify constructors were called by the patcher via the fixture
+    # Check the call args on the mock returned by the patcher
+    from cogitator.model.ollama import Client, AsyncClient
+    Client.assert_called_once_with(host="http://testhost:11434")
+    AsyncClient.assert_called_once_with(host="http://testhost:11434")
 
 
-def test_ollama_strip_content():
-    with patch("cogitator.model.Client") as MockClient:
-        MockClient.return_value.list.return_value = {'models': []}
-        llm = OllamaLLM(model="dummy")
+def test_ollama_strip_content(mock_ollama_clients):
+    llm = OllamaLLM(model="dummy")
 
     response_dict = {"message": {"content": "  Strip Me!  "}}
     response_obj = MagicMock(message=MagicMock(content="  Strip Me Too!  "))
@@ -192,10 +175,8 @@ def test_ollama_strip_content():
     assert llm._strip_content("string") == ""
 
 
-def test_ollama_prepare_options():
-    with patch("cogitator.model.Client") as MockClient:
-        MockClient.return_value.list.return_value = {'models': []}
-        llm = OllamaLLM(model="d", temperature=0.5, max_tokens=100, stop=["\n"], seed=1)
+def test_ollama_prepare_options(mock_ollama_clients):
+    llm = OllamaLLM(model="d", temperature=0.5, max_tokens=100, stop=["\n"], seed=1)
 
     opts = llm._prepare_options(temperature=0.8, seed=None, stop=["stop"], extra_param=True)
     assert opts == {"temperature": 0.8, "num_predict": 100, "stop": ["stop"], "extra_param": True}

@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 
+from cogitator import ExtractedAnswer
 from cogitator import SelfConsistency
-from cogitator.schemas import ExtractedAnswer
 
 
 def test_extract_answer_heuristic_with_equal_sign():

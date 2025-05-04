@@ -34,14 +34,14 @@ The `run.py` script executes the following steps:
 
 1. **Configuration:** Loads settings from `benches.yml` and merges them with command-line arguments (CLI > YAML > Defaults).
 2. **Dataset Loading:** Loads the specified dataset subset based on the final configuration.
-3. **Model & CoT Methods:** Sets up the language model and instances of enabled CoT methods, configured according to
+3. **Model & CoT Strategies:** Sets up the language model and instances of enabled CoT strategies, configured according to
    `benches.yml`.
-4. **Setup Phase (One-Time Cost per Run):** Before generating answers for the test questions, methods that need fitting
+4. **Setup Phase (One-Time Cost per Run):** Before generating answers for the test questions, strategies that need fitting
    or training (like AutoCoT and CDWCoT) perform this step *once* using the loaded dataset samples and configured
    parameters.
 5. **Generation Phase (Per Question):** The script iterates through each loaded question:
-    * For each question, it executes all *enabled* CoT methods using their configured parameters.
-    * If run synchronously, methods execute one after another. If async, calls run concurrently.
+    * For each question, it executes all *enabled* CoT strategies using their configured parameters.
+    * If run synchronously, strategies execute one after another. If async, calls run concurrently.
     * The raw text output from the LLM and the execution time are recorded.
 6. **Output:** Results are saved line-by-line in JSONL format to the specified output file.
 
@@ -57,7 +57,7 @@ poetry run python benches/evaluate.py --input-file <path_to_results.jsonl> [EVAL
 
 This script reads the JSONL file, loads its configuration from `benches.yml` and merges with CLI options, extracts the
 final answer from the raw model output (using the configured extractor type: heuristic or LLM), compares it to the
-correct answer, and calculates the accuracy for each CoT method present in the result file. It then shows a summary
+correct answer, and calculates the accuracy for each CoT strategy present in the result file. It then shows a summary
 table. See `poetry run python benches/evaluate.py --help` for evaluation-specific options.
 
 ### Configuration (`benches.yml`)
@@ -96,7 +96,7 @@ Benchmark runs are configured using `benches.yml` in the project root, combined 
         * `llm_params`: Settings for the LLM extractor if `type` is `llm`.
     * `show_details`: `true` to print per-question evaluation details.
     * `concurrency`: Max parallel requests for the LLM extractor.
-* **`strategies`**: Configure individual CoT methods.
+* **`strategies`**: Configure individual CoT strategies.
     * Each key is the strategy's class name (e.g., `AutoCoT`).
     * Including a section enables the strategy by default. Add `enabled: false` to disable.
     * Set strategy-specific parameters (e.g., `n_demos`, `pool_size`, `n_samples`, `max_depth`).
@@ -159,8 +159,8 @@ poetry run python benches/evaluate.py --input-file my_openai_results.jsonl --ext
 ## Performance Metric
 
 Accuracy is the primary metric reported by the `evaluate.py` script. It is defined as the percentage of correctly
-answered questions out of the total number of successfully extracted answers for a given method. Failed extractions are
-reported separately.
+answered questions out of the total number of successfully extracted answers for a given CoT strategy.
+Failed extractions are reported separately.
 
 ## Datasets
 

@@ -4,10 +4,10 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
-from .clustering import BaseClusterer, KMeansClusterer
-from .embedding import BaseEmbedder, SentenceTransformerEmbedder
-from .model import BaseLLM
-from .utils import approx_token_length, count_steps
+from ..clustering import BaseClusterer, KMeansClusterer
+from ..embedding import BaseEmbedder, SentenceTransformerEmbedder
+from ..model import BaseLLM
+from ..utils import approx_token_length, count_steps
 
 logger = logging.getLogger(__name__)
 

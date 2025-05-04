@@ -20,7 +20,7 @@ def setup_auto_cot(llm: BaseLLM) -> AutoCoT:
     )
 
 
-QUESTIONS_POOL = [
+TRAIN_QUESTIONS = [
     "A merchant had 10 apples. He sold 3. How many remain?",
     "There are 7 days in a week. How many days in 3 weeks?",
     "If you buy 4 pens at $2 each, what's the total cost?",
@@ -31,38 +31,39 @@ QUESTIONS_POOL = [
     "You read 20 pages per day. How many pages in 5 days?",
 ]
 
-TEST_QUESTIONS = [
+QUESTIONS = [
     "John has 8 oranges and gives 3 away. How many does he have?",
     "You run 5 km per day. How far in 7 days?",
 ]
 
 
-async def main_async(args: argparse.Namespace) -> None:
+async def main_async(args: argparse.Namespace):
     llm = get_llm(args.provider, args.model_name, args.openai_key)
     auto = setup_auto_cot(llm)
     semaphore = asyncio.Semaphore(5)
 
     logger.info("Fitting AutoCoT asynchronously...")
-    await auto.fit_async(QUESTIONS_POOL, semaphore=semaphore)
+    await auto.fit_async(TRAIN_QUESTIONS, semaphore=semaphore)
 
     logger.info("Running test questions asynchronously...")
-    tasks = [auto.run_async(q) for q in TEST_QUESTIONS]
+    tasks = [auto.run_async(q) for q in QUESTIONS]
     answers = await asyncio.gather(*tasks)
 
-    for _q, _a in zip(TEST_QUESTIONS, answers, strict=False):
-        pass
+    for q, a in zip(QUESTIONS, answers):
+        print(f"Q: {q}\nA: {a}\n")
 
 
-def main_sync(args: argparse.Namespace) -> None:
+def main_sync(args: argparse.Namespace):
     llm = get_llm(args.provider, args.model_name, args.openai_key)
     auto = setup_auto_cot(llm)
 
     logger.info("Fitting AutoCoT synchronously...")
-    auto.fit(QUESTIONS_POOL)
+    auto.fit(TRAIN_QUESTIONS)
 
     logger.info("Running test questions synchronously...")
-    for q in TEST_QUESTIONS:
-        auto.run(q)
+    for q in QUESTIONS:
+        result = auto.run(q)
+        print(f"Q: {q}\nA: {result}\n")
 
 
 if __name__ == "__main__":

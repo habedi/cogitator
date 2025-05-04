@@ -33,8 +33,13 @@ plugins:
 nav:
   - Home: index.md
   - API Reference:
-      - BaseLLM: api/model.md
+      - LLM Providers:
+          - Base: api/model.md
+          - OpenAI: api/openai.md
+          - Ollama: api/ollama.md
       - Schemas: api/schemas.md
+      - Embedding: api/embedding.md
+      - Clustering: api/clustering.md
       - Strategies:
           - AutoCoT: api/auto_cot.md
           - CDWCoT: api/cdw_cot.md

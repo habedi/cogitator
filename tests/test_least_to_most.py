@@ -1,11 +1,9 @@
 import pytest
 
+from cogitator import LTMDecomposition, ExtractedAnswer
 from cogitator import LeastToMost
-from cogitator.schemas import LTMDecomposition, ExtractedAnswer
 
 
-# --- Decompose tests ---
-# ... (these tests remain unchanged) ...
 def test_decompose_numbered(fake_llm_factory):
     llm = fake_llm_factory({
         "json_subquestions": LTMDecomposition(subquestions=["sub1", "sub2", "sub3"])
@@ -153,13 +151,11 @@ def test_run_integration_text_mode(fake_llm_factory):
 
 
 def test_run_integration_json_mode(fake_llm_factory):
-    # FIX: Use responses_map with unique substrings
     subquestions = ["dummy sub1", "dummy sub2"]
     question = "question?"
     fake_sub_answer_obj = ExtractedAnswer(final_answer="sub_answer_sync_json")
     fake_final_answer_obj = ExtractedAnswer(final_answer="ANS_sync_json")
 
-    # Use unique substrings guaranteed to be in the target prompts
     solve_prompt_key_1 = "Current Subquestion: dummy sub1"
     solve_prompt_key_2 = "Current Subquestion: dummy sub2"
     # The final prompt starts with "Based on..." and contains the original question
@@ -168,7 +164,7 @@ def test_run_integration_json_mode(fake_llm_factory):
     llm = fake_llm_factory({
         "json_subquestions": LTMDecomposition(subquestions=subquestions),
         "responses_map": {
-            # Map unique substring to the desired OBJECT for JSON mode
+
             solve_prompt_key_1: fake_sub_answer_obj,
             solve_prompt_key_2: fake_sub_answer_obj,
             final_prompt_key: fake_final_answer_obj
@@ -176,7 +172,7 @@ def test_run_integration_json_mode(fake_llm_factory):
     })
     ltm = LeastToMost(llm, intermediate_output_format="json")
     out = ltm.run(question)
-    assert out == "ANS_sync_json"  # Assertion should pass now
+    assert out == "ANS_sync_json"
 
     assert any(
         c["type"] == "_generate_json_internal" and c["response_model"] == "LTMDecomposition" for c
@@ -216,13 +212,11 @@ async def test_run_async_integration_text_mode(fake_llm_factory):
 
 @pytest.mark.asyncio
 async def test_run_async_integration_json_mode(fake_llm_factory):
-    # FIX: Use responses_map with unique substrings
     subquestions = ["dummy sub1 async", "dummy sub2 async"]
     question = "question async?"
     fake_sub_answer_obj_async = ExtractedAnswer(final_answer="sub_answer_async_json")
     fake_final_answer_obj_async = ExtractedAnswer(final_answer="ANS_async_json")
 
-    # Use unique substrings guaranteed to be in the target prompts
     solve_prompt_key_1 = "Current Subquestion: dummy sub1 async"
     solve_prompt_key_2 = "Current Subquestion: dummy sub2 async"
     final_prompt_key = f"Original Main Question: {question}"  # Include the specific question
@@ -237,7 +231,7 @@ async def test_run_async_integration_json_mode(fake_llm_factory):
     })
     ltm = LeastToMost(llm, intermediate_output_format="json")
     out = await ltm.run_async(question)
-    assert out == "ANS_async_json"  # Assertion should pass now
+    assert out == "ANS_async_json"
 
     assert any(
         c["type"] == "_generate_json_internal_async" and c["response_model"] == "LTMDecomposition"
@@ -267,7 +261,6 @@ async def test_solve_async_calls_generate_async_text(fake_llm_factory):
 @pytest.mark.asyncio
 async def test_solve_async_calls_generate_json_async(fake_llm_factory):
     expected_sub_answer_obj = ExtractedAnswer(final_answer="async_sub_answer_test_json")
-    # The solve prompt includes "JSON Answer:", so configure "json_answer" key
     llm = fake_llm_factory({"json_answer": expected_sub_answer_obj})
     ltm = LeastToMost(llm, intermediate_output_format="json")
     solved = await ltm.solve_async("main q", ["sub1", "sub2"])

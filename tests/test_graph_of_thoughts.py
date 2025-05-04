@@ -2,8 +2,8 @@ import json
 
 import pytest
 
+from cogitator import EvaluationResult, ExtractedAnswer
 from cogitator import GraphOfThoughts
-from cogitator.schemas import EvaluationResult, ExtractedAnswer
 
 
 def test_run_returns_result_and_calls_prompts_text_format(
@@ -15,7 +15,7 @@ def test_run_returns_result_and_calls_prompts_text_format(
         "json_eval": fake_eval_config,
         "final_answer": "RESULT_sync_text"
     })
-    # Changed use_json=False to final_answer_format="text"
+
     got_instance = GraphOfThoughts(llm, max_iters=1, num_branches=1, beam_width=1,
                                    final_answer_format="text")
     out = got_instance.run("start?")
@@ -42,18 +42,17 @@ def test_run_returns_result_and_calls_prompts_json_format(
     fake_llm_factory, patch_embedding_clustering):
     fake_expansion_config_str = json.dumps({"thoughts": ["stepA_sync_json"]})
     fake_eval_config = EvaluationResult(score=9, justification="Good_sync_json")
-    # Configure fake LLM to return JSON object for the final answer step
     fake_final_answer_obj = ExtractedAnswer(final_answer="RESULT_sync_json")
     llm = fake_llm_factory({
         "generate_sync": fake_expansion_config_str,
         "json_eval": fake_eval_config,
-        "json_answer": fake_final_answer_obj  # Use json_answer key for final JSON response
+        "json_answer": fake_final_answer_obj
     })
-    # Changed use_json=True to final_answer_format="json"
+
     got_instance = GraphOfThoughts(llm, max_iters=1, num_branches=1, beam_width=1,
                                    final_answer_format="json")
     out = got_instance.run("start_json?")
-    assert out == "RESULT_sync_json"  # Expecting the extracted string
+    assert out == "RESULT_sync_json"
 
     final_json_call = next((c for c in llm.sync_calls if
                             c["type"] == "_generate_json_internal" and "JSON Answer:" in c[
@@ -74,7 +73,7 @@ async def test_run_async_returns_result_and_calls_prompts_text_format(
         "json_eval": fake_eval_config_async,
         "final_answer": "RESULT_async_text"
     })
-    # Changed use_json=False to final_answer_format="text"
+
     got_instance = GraphOfThoughts(llm, max_iters=1, num_branches=1, beam_width=1,
                                    final_answer_format="text")
     out = await got_instance.run_async("start_async?")
@@ -107,9 +106,9 @@ async def test_run_async_returns_result_and_calls_prompts_json_format(
     llm = fake_llm_factory({
         "generate_async": fake_expansion_config_async_str,
         "json_eval": fake_eval_config_async,
-        "json_answer": fake_final_answer_obj_async  # Use json_answer key
+        "json_answer": fake_final_answer_obj_async
     })
-    # Changed use_json=True to final_answer_format="json"
+
     got_instance = GraphOfThoughts(llm, max_iters=1, num_branches=1, beam_width=1,
                                    final_answer_format="json")
     out = await got_instance.run_async("start_async_json?")
