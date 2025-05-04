@@ -11,7 +11,7 @@
 [![Code Quality](https://img.shields.io/codefactor/grade/github/habedi/cogitator?style=flat&label=code%20quality&labelColor=333333&logo=codefactor&logoColor=white)](https://www.codefactor.io/repository/github/habedi/cogitator)
 [![Python Version](https://img.shields.io/badge/python-%3E=3.10-3776ab?style=flat&labelColor=333333&logo=python&logoColor=white)](https://github.com/habedi/cogitator)
 [![PyPI Version](https://img.shields.io/pypi/v/cogitator.svg?style=flat&label=pypi&labelColor=333333&logo=pypi&logoColor=white&color=3775a9)](https://pypi.org/project/cogitator/)
-[![Downloads](https://img.shields.io/pypi/dm/cogitator.svg?style=flat&label=downloads&labelColor=333333&logo=pypi&logoColor=white&color=cc8400)](https://pypi.org/project/cogitator/)
+[![Downloads](https://img.shields.io/pypi/dm/cogitator.svg?style=flat&label=downloads&labelColor=333333&logo=pypi&logoColor=white&color=cc8400)](https://github.com/habedi/cogitator)
 [![License](https://img.shields.io/badge/license-MIT-00acc1?style=flat&labelColor=333333&logo=open-source-initiative&logoColor=white)](https://github.com/habedi/cogitator/blob/main/LICENSE)
 [![Documentation](https://img.shields.io/badge/docs-latest-8ca0d7?style=flat&labelColor=333333&logo=readthedocs&logoColor=white)](https://github.com/habedi/cogitator/blob/main/docs)
 [![DOI](https://img.shields.io/badge/doi-10.5281/zenodo.15331821-6f42c1.svg?style=flat&labelColor=333333&logo=zenodo&logoColor=white)](https://doi.org/10.5281/zenodo.15331821)
@@ -68,6 +68,44 @@ poetry run pytest
 #### Examples
 
 See the [examples](examples) directory for examples.
+
+```python
+import logging
+from cogitator import SelfConsistency, OllamaLLM
+
+# Step 1: Configure logging (optional, but helpful)
+logging.basicConfig(level=logging.INFO)
+logging.getLogger("httpx").setLevel(logging.WARNING)  # Suppress HTTPX logs
+
+# Step 2: Initialize the LLM (using Ollama)
+# Needs Ollama running locally with the model pulled (e.g., `ollama pull gemma3:4b`)
+try:
+    llm = OllamaLLM(model="gemma3:4b")
+except Exception as e:
+    print(f"Error initializing Ollama LLM: {e}")
+    print("Please make sure Ollama is running and the model is pulled.")
+    exit(1)
+
+# Step 3: Choose a CoT method (Self-Consistency in this case)
+# Self-Consistency generates multiple reasoning paths and finds the most common answer
+sc_method = SelfConsistency(
+    llm,
+    n_samples=5,  # Number of reasoning paths to generate
+    temperature=0.7  # Higher temperature can lead to more diverse answers
+)
+
+# Step 4: Define the prompt (with a basic CoT trigger)
+question = "A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. How much does the ball cost?"
+prompt = f"Q: {question}\nA: Let's think step by step."
+
+# Step 5: Run the CoT prompting method
+print(f"\nQuestion: {question}")
+print("Running Self-Consistency CoT...")
+final_answer = sc_method.run(prompt)  # Returns the most consistent (repeated) answer
+
+# Expected output: $0.05 or 0.05 (may vary slightly based on model and temperature)
+print(f"\nCogitator's Answer (Self-Consistency): {final_answer}")
+```
 
 ---
 
