@@ -3,7 +3,8 @@
 Implementation of the Clustered Distance-Weighted Chain-of-Thought (CDW-CoT) prompting strategy.
 
 ::: cogitator.strategies.cdw_cot.CDWCoT
-options:
-show_root_heading: true
-show_source: true
-members_order: source
+    options:
+        show_root_heading: true
+        show_source: true
+        members_order: source
+        heading_level: 2
