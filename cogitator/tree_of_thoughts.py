@@ -11,14 +11,14 @@ logger = logging.getLogger(__name__)
 
 class TreeOfThoughts:
     class _Node:
-        __slots__ = ("steps", "parent", "children", "visits", "value_sum", "prior")
+        __slots__ = ("children", "parent", "prior", "steps", "value_sum", "visits")
 
         def __init__(
             self,
             steps: List[str],
             parent: Optional["TreeOfThoughts._Node"] = None,
             prior: float = 1.0,
-        ):
+        ) -> None:
             self.steps = steps
             self.parent = parent
             self.children: List["TreeOfThoughts._Node"] = []
@@ -59,7 +59,7 @@ class TreeOfThoughts:
         *,
         max_tokens: Optional[int] = 256,
         seed: Optional[int] = None,
-    ):
+    ) -> None:
         self.llm = llm
         self.max_depth = max_depth
         self.num_branches = num_branches
@@ -107,7 +107,7 @@ class TreeOfThoughts:
 
         prior = 1.0 / len(thoughts) if thoughts else 1.0
         for thought in thoughts[: self.num_branches]:
-            child = TreeOfThoughts._Node(node.steps + [thought], parent=node, prior=prior)
+            child = TreeOfThoughts._Node([*node.steps, thought], parent=node, prior=prior)
             node.children.append(child)
 
     async def _expand_async(
@@ -141,7 +141,7 @@ class TreeOfThoughts:
 
         prior = 1.0 / len(thoughts) if thoughts else 1.0
         for thought in thoughts[: self.num_branches]:
-            child = TreeOfThoughts._Node(node.steps + [thought], parent=node, prior=prior)
+            child = TreeOfThoughts._Node([*node.steps, thought], parent=node, prior=prior)
             node.children.append(child)
 
     def _evaluate(self, node: _Node, question: str, **kwargs) -> float:

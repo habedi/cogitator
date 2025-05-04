@@ -17,7 +17,7 @@ max_line_length = 100
 
 # Markdown files
 [*.md]
-max_line_length = 120
+max_line_length = 130
 trim_trailing_whitespace = false
 
 # Bash scripts

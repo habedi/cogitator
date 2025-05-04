@@ -2,6 +2,7 @@
 
 | File                                                 | Description                                                           |
 |------------------------------------------------------|-----------------------------------------------------------------------|
+| [run_simple_example.py](run_simple_example.py)       | A simple end-to-end example of using the Cogitator library            |
 | [run_least_to_most.py](run_least_to_most.py)         | Example of using the Least-to-Most prompting method                   |
 | [run_sc_cot.py](run_sc_cot.py)                       | Example of using the Self-Consistency prompting method                |
 | [run_auto_cot.py](run_auto_cot.py)                   | Example of using the Automatic CoT prompting method                   |
@@ -32,5 +33,6 @@ make example-ollama
 make example-openai
 ```
 
-> [!NOTE]
-> Examples should be run in the root directory of the repository.
+Note that the examples should be run from the root directory of the repository.
+Additionally, to use `gemma3:4b` (or any other model like `gemma3:12b`) with Ollama, it must be pulled (or downloaded)
+first.

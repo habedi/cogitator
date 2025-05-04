@@ -1,0 +1,84 @@
+common:
+  debug: false
+  openai_key_env_var: "OPENAI_API_KEY"
+
+generation:
+  dataset: "gsm8k"
+  cutoff: 50
+  provider: "ollama"
+  model_name: "gemma3:4b"
+  ollama_host: null # Or Ollama host:port; only relevant if provider is "ollama"
+  use_async: true
+  concurrency: 3
+  use_json_strategies: false
+  output_file: "benchmark_results.jsonl"
+  llm_params:
+    max_tokens: 1024
+    seed: 33
+    temperature: 0.7
+
+evaluation:
+  input_file: "benchmark_results.jsonl"
+  extractor:
+    type: "heuristic" # Can be "llm"
+    provider: "ollama" # Only relevant if type is "llm"
+    model_name: "gemma3:4b" # Only relevant if type is "llm"
+    ollama_host: "0.0.0.0:11434" # Or null; only relevant if type is "llm"
+    llm_params: # Only relevant if type is "llm"
+      max_tokens: 64
+      seed: 42
+      temperature: 0.1
+  show_details: false
+  concurrency: 3 # Concurrency for LLM extractor if used
+
+strategies: # CoT methods to benchmark
+  ZeroShotCoT:
+    enabled: true
+
+  AutoCoT:
+    enabled: true
+    n_demos: 5
+    max_q_tokens: 100
+    max_steps: 8
+    max_retries: 3
+    prompt_template: "Let's think step-by-step."
+
+  CDWCoT:
+    enabled: true
+    pool_size: 10
+    n_clusters: 5
+    lr: 0.1
+    sample_size: 10
+    max_grad_norm: 1.0
+    init_pool_retries: 1
+    train_params:
+      epochs: 5
+      patience: 2
+      val_split: 0.2
+
+  SelfConsistency:
+    enabled: true
+    n_samples: 10
+    temperature: 0.8
+    stop: [ "\n\n" ]
+    internal_extraction_format: "json" # or "heuristic"
+
+  LeastToMost:
+    enabled: true
+    max_subqs: 10
+    intermediate_output_format: "json" # or "text"
+
+  TreeOfThoughts:
+    enabled: true
+    max_depth: 3
+    num_branches: 3
+    sims: 10
+    c_puct: 1.0
+
+  GraphOfThoughts:
+    enabled: true
+    max_iters: 5
+    num_branches: 3
+    beam_width: 5
+    merge_threshold: 0.9
+    final_answer_format: "text" # or "json"

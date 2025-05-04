@@ -21,7 +21,7 @@ QUESTIONS = [
 ]
 
 
-async def main_async(args: argparse.Namespace):
+async def main_async(args: argparse.Namespace) -> None:
     llm = get_llm(args.provider, args.model_name, args.openai_key)
     tot = setup_tot(llm)
     semaphore = asyncio.Semaphore(5)
@@ -30,18 +30,17 @@ async def main_async(args: argparse.Namespace):
     tasks = [tot.run_async(q, semaphore=semaphore) for q in QUESTIONS]
     answers = await asyncio.gather(*tasks)
 
-    for q, a in zip(QUESTIONS, answers):
-        print(f"Q: {q}\nA: {a}\n")
+    for _q, _a in zip(QUESTIONS, answers, strict=False):
+        pass
 
 
-def main_sync(args: argparse.Namespace):
+def main_sync(args: argparse.Namespace) -> None:
     llm = get_llm(args.provider, args.model_name, args.openai_key)
     tot = setup_tot(llm)
 
     logger.info("Running TreeOfThoughts synchronously...")
     for q in QUESTIONS:
-        a = tot.run(q)
-        print(f"Q: {q}\nA: {a}\n")
+        tot.run(q)
 
 
 if __name__ == "__main__":

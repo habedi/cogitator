@@ -9,7 +9,7 @@ from cogitator import BaseLLM, OllamaLLM, OpenAILLM
 logger = logging.getLogger(__name__)
 
 
-def setup_logging():
+def setup_logging() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
@@ -44,7 +44,7 @@ def parse_common_args(description: str) -> argparse.Namespace:
     parser.add_argument(
         "--model-name",
         default=None,
-        help="Name of the model (default: 'gemma3:4b' for ollama, 'gpt-4o-mini' for openai)",
+        help="Name of the model (default: 'gemma3:4b' for ollama, 'gpt-4.1-nano' for openai)",
     )
     parser.add_argument(
         "--openai-key",
@@ -58,7 +58,7 @@ def parse_common_args(description: str) -> argparse.Namespace:
     args = parser.parse_args()
 
     if not args.model_name:
-        args.model_name = "gpt-4o-mini" if args.provider == "openai" else "gemma3:4b"
+        args.model_name = "gpt-4.1-nano" if args.provider == "openai" else "gemma3:4b"
         logger.info(
             f"Model name not specified, using default for {args.provider}: {args.model_name}"
         )
@@ -70,7 +70,7 @@ def run_main(
     main_sync_func: Callable[[argparse.Namespace], None],
     main_async_func: Callable[[argparse.Namespace], Coroutine[Any, Any, None]],
     description: str,
-):
+) -> None:
     args = parse_common_args(description)
 
     if args.use_async:

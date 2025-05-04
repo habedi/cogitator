@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "cogitator"
-version = "0.1.0a2"
+version = "0.1.0a3"
 description = "A Python toolkit for chain-of-thought prompting"
 authors = ["Hassan Abedi <hassan.abedi.t+cogitator@gmail.com>"]
 license = "MIT"
@@ -40,6 +40,7 @@ ruff = "^0.11.7"
 griffe = "^1.7.3"
 polars = "^1.28.1"
 datasets = "^3.5.1"
+pyyaml = "^6.0.2"
 
 [build-system]
 requires = ["poetry-core"]
@@ -56,6 +57,9 @@ addopts = [
     "--cov-report=term",
     "--cov-report=xml",
 ]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
 
 [tool.coverage.run]
 branch = true
@@ -112,9 +116,10 @@ line-length = 100
 indent-width = 4
 src = ["cogitator", "examples"]
 target-version = "py310"
+unsafe-fixes = true
 
 [tool.ruff.lint]
-select = ["ANN", "E", "F", "I"]
+select = ["ANN", "E", "F", "I", "W", "B", "RUF", "SIM", "C90", "T20"]
 ignore = [
     # Ignore docstring errors
     "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",

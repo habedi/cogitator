@@ -6,9 +6,9 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 
+from .embedding import BaseEmbedder, SentenceTransformerEmbedder
 from .model import BaseLLM
 from .schemas import EvaluationResult, ExtractedAnswer
-from .utils import encode
 
 logger = logging.getLogger(__name__)
 
@@ -25,15 +25,16 @@ def _strip_fences(text: str) -> str:
 
 class GraphOfThoughts:
     class _Node:
-        __slots__ = ("id", "steps", "parents", "children", "embed", "visits", "score_sum", "data")
+        __slots__ = ("children", "data", "embed", "id", "parents", "score_sum", "steps", "visits")
         _id_counter = 0
 
         def __init__(
             self,
             steps: List[str],
+            embedder: BaseEmbedder,
             parents: Optional[List["GraphOfThoughts._Node"]] = None,
             data: Optional[Any] = None,
-        ):
+        ) -> None:
             self.id = GraphOfThoughts._Node._id_counter
             GraphOfThoughts._Node._id_counter += 1
 
@@ -48,7 +49,7 @@ class GraphOfThoughts:
             try:
                 text_to_encode = " -> ".join(self.steps)
                 if text_to_encode:
-                    emb_list = encode([text_to_encode])
+                    emb_list = embedder.encode([text_to_encode])
                     if len(emb_list) > 0 and emb_list[0] is not None:
                         self.embed = np.array(emb_list[0], dtype=float)
             except Exception as e:
@@ -100,7 +101,8 @@ class GraphOfThoughts:
         final_answer_format: Literal["text", "json"] = "text",
         max_tokens: Optional[int] = None,
         seed: Optional[int] = None,
-    ):
+        embedder: Optional[BaseEmbedder] = None,
+    ) -> None:
         self.llm = llm
         self.max_iters = max_iters
         self.num_branches = num_branches
@@ -109,6 +111,7 @@ class GraphOfThoughts:
         self.expand_prompt = expand_prompt
         self.eval_prompt = eval_prompt
         self.final_answer_format = final_answer_format
+        self.embedder = embedder or SentenceTransformerEmbedder()
 
         self.max_tokens = max_tokens
         self.seed = seed
@@ -256,7 +259,7 @@ class GraphOfThoughts:
 
     def run(self, question: str, **kwargs) -> str:
         GraphOfThoughts._Node._id_counter = 0
-        root = self._Node([question])
+        root = self._Node([question], embedder=self.embedder)
         frontier = [root]
         all_nodes = {root.id: root}
 
@@ -298,7 +301,9 @@ class GraphOfThoughts:
             newly_added: List[GraphOfThoughts._Node] = []
             for node in frontier:
                 for step in expansion_results.get(node.id, []):
-                    new_node = self._Node(node.steps + [step], parents=[node])
+                    new_node = self._Node(
+                        [*node.steps, step], embedder=self.embedder, parents=[node]
+                    )
                     similar = self._find_similar_node(new_node, list(all_nodes.values()))
 
                     if similar:
@@ -369,7 +374,14 @@ class GraphOfThoughts:
                     seed=local_kwargs_final.pop("seed", self.seed),
                     **local_kwargs_final,
                 )
-                return parsed.final_answer.strip()
+                final_answer_value = parsed.final_answer
+                if isinstance(final_answer_value, str):
+                    return final_answer_value.strip()
+                elif final_answer_value is not None:
+                    return str(final_answer_value)
+                else:
+                    logger.warning("GoT final JSON extraction returned None.")
+                    return ""
             else:
                 return self.llm.generate(
                     final_prompt,
@@ -385,7 +397,7 @@ class GraphOfThoughts:
         self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs
     ) -> str:
         GraphOfThoughts._Node._id_counter = 0
-        root = self._Node([question])
+        root = self._Node([question], embedder=self.embedder)
         frontier = [root]
         all_nodes = {root.id: root}
 
@@ -453,7 +465,9 @@ class GraphOfThoughts:
                     continue
 
                 for step in steps:
-                    new_node = self._Node(parent.steps + [step], parents=[parent])
+                    new_node = self._Node(
+                        [*parent.steps, step], embedder=self.embedder, parents=[parent]
+                    )
                     similar = self._find_similar_node(new_node, list(all_nodes.values()))
                     if similar:
                         if parent not in similar.parents:
@@ -551,7 +565,14 @@ class GraphOfThoughts:
                         parsed = await self.llm.generate_json_async(json_req, **gen_args)
                 else:
                     parsed = await self.llm.generate_json_async(json_req, **gen_args)
-                return parsed.final_answer.strip()
+                final_answer_value = parsed.final_answer
+                if isinstance(final_answer_value, str):
+                    return final_answer_value.strip()
+                elif final_answer_value is not None:
+                    return str(final_answer_value)
+                else:
+                    logger.warning("GoT final async JSON extraction returned None.")
+                    return ""
             else:
                 gen_args = {
                     "max_tokens": final_max_tokens,

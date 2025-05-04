@@ -1,7 +1,7 @@
 import pytest
 
-from cogitator.schemas import ThoughtExpansion, EvaluationResult
 from cogitator import TreeOfThoughts
+from cogitator.schemas import ThoughtExpansion, EvaluationResult
 
 
 def test_run_returns_final_and_calls_prompts(fake_llm_factory):
@@ -26,8 +26,8 @@ def test_run_returns_final_and_calls_prompts(fake_llm_factory):
                      None)
     final_call = next((c for c in llm.sync_calls if
                        c["type"] == "generate" and (
-                               "Given reasoning steps" in c["prompt"] or c["prompt"].startswith(
-                               "Answer the question:"))),
+                           "Given reasoning steps" in c["prompt"] or c["prompt"].startswith(
+                           "Answer the question:"))),
                       None)
 
     assert expand_call is not None, "Expansion call not found"
@@ -61,8 +61,8 @@ async def test_run_async_returns_final_and_calls_prompts(fake_llm_factory):
                      None)
     final_call = next((c for c in llm.async_calls if
                        c["type"] == "generate_async" and (
-                               "Given reasoning steps" in c["prompt"] or c["prompt"].startswith(
-                               "Answer the question:"))),
+                           "Given reasoning steps" in c["prompt"] or c["prompt"].startswith(
+                           "Answer the question:"))),
                       None)
 
     assert expand_call is not None, "Async expansion call not found"

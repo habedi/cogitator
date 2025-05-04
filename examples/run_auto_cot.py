@@ -38,7 +38,7 @@ TEST_QUESTIONS = [
 ]
 
 
-async def main_async(args: argparse.Namespace):
+async def main_async(args: argparse.Namespace) -> None:
     llm = get_llm(args.provider, args.model_name, args.openai_key)
     auto = setup_auto_cot(llm)
     semaphore = asyncio.Semaphore(5)
@@ -50,11 +50,11 @@ async def main_async(args: argparse.Namespace):
     tasks = [auto.run_async(q) for q in TEST_QUESTIONS]
     answers = await asyncio.gather(*tasks)
 
-    for q, a in zip(TEST_QUESTIONS, answers):
-        print(f"Q: {q}\nA: {a}\n")
+    for _q, _a in zip(TEST_QUESTIONS, answers, strict=False):
+        pass
 
 
-def main_sync(args: argparse.Namespace):
+def main_sync(args: argparse.Namespace) -> None:
     llm = get_llm(args.provider, args.model_name, args.openai_key)
     auto = setup_auto_cot(llm)
 
@@ -63,8 +63,7 @@ def main_sync(args: argparse.Namespace):
 
     logger.info("Running test questions synchronously...")
     for q in TEST_QUESTIONS:
-        result = auto.run(q)
-        print(f"Q: {q}\nA: {result}\n")
+        auto.run(q)
 
 
 if __name__ == "__main__":
