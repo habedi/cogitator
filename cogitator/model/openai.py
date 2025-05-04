@@ -22,12 +22,12 @@ class OpenAILLM(BaseLLM):
     }
 
     _JSON_MODE_SUPPORTING_MODELS = {
-        "gpt-4",
-        "gpt-4-turbo",
-        "gpt-4-turbo-preview",
-        "gpt-3.5-turbo-1106",
-        "gpt-3.5-turbo-0125",
-    } | _STRUCTURED_OUTPUT_SUPPORTING_MODELS
+                                       "gpt-4",
+                                       "gpt-4-turbo",
+                                       "gpt-4-turbo-preview",
+                                       "gpt-3.5-turbo-1106",
+                                       "gpt-3.5-turbo-0125",
+                                   } | _STRUCTURED_OUTPUT_SUPPORTING_MODELS
 
     def __init__(
         self,
@@ -79,7 +79,7 @@ class OpenAILLM(BaseLLM):
                             "json_schema": {
                                 "name": response_schema.__name__,
                                 "description": response_schema.__doc__
-                                or f"Schema for {response_schema.__name__}",
+                                               or f"Schema for {response_schema.__name__}",
                                 "strict": True,
                                 "schema": schema_dict,
                             },
@@ -122,7 +122,7 @@ class OpenAILLM(BaseLLM):
                             "json_schema": {
                                 "name": response_schema.__name__,
                                 "description": response_schema.__doc__
-                                or f"Schema for {response_schema.__name__}",
+                                               or f"Schema for {response_schema.__name__}",
                                 "strict": True,
                                 "schema": schema_dict,
                             },

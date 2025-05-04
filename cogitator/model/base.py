@@ -1,38 +1,44 @@
-import abc
 import asyncio
 import json
 import logging
 import re
 import time
-from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Tuple, Type
+from abc import ABC, abstractmethod
+from typing import Any, AsyncIterator, Iterator, Optional, Tuple, Type
 
 from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
 
 
-class BaseLLM(abc.ABC):
-    @abc.abstractmethod
-    def generate(self, prompt: str, **kwargs: Any) -> str: ...
+class BaseLLM(ABC):
+    @abstractmethod
+    def generate(self, prompt: str, **kwargs: Any) -> str:
+        ...
 
-    @abc.abstractmethod
-    async def generate_async(self, prompt: str, **kwargs: Any) -> str: ...
+    @abstractmethod
+    async def generate_async(self, prompt: str, **kwargs: Any) -> str:
+        ...
 
-    @abc.abstractmethod
-    def generate_stream(self, prompt: str, **kwargs: Any) -> Iterator[str]: ...
+    @abstractmethod
+    def generate_stream(self, prompt: str, **kwargs: Any) -> Iterator[str]:
+        ...
 
-    @abc.abstractmethod
-    async def generate_stream_async(self, prompt: str, **kwargs: Any) -> AsyncIterator[str]: ...
+    @abstractmethod
+    async def generate_stream_async(self, prompt: str, **kwargs: Any) -> AsyncIterator[str]:
+        ...
 
-    @abc.abstractmethod
+    @abstractmethod
     def _generate_json_internal(
         self, prompt: str, response_model: Type[BaseModel], **kwargs: Any
-    ) -> Tuple[str, Optional[str]]: ...
+    ) -> Tuple[str, Optional[str]]:
+        ...
 
-    @abc.abstractmethod
+    @abstractmethod
     async def _generate_json_internal_async(
         self, prompt: str, response_model: Type[BaseModel], **kwargs: Any
-    ) -> Tuple[str, Optional[str]]: ...
+    ) -> Tuple[str, Optional[str]]:
+        ...
 
     def _extract_json_block(self, text: str) -> str:
         fence_match = re.search(
@@ -95,7 +101,7 @@ class BaseLLM(abc.ABC):
                     e,
                     exc_info=True,
                 )
-            time.sleep(2**attempt)
+            time.sleep(2 ** attempt)
         raise RuntimeError(
             f"generate_json failed after {retries + 1} attempts. Last error: {type(last_error).__name__}: {last_error}"
         )
@@ -143,7 +149,7 @@ class BaseLLM(abc.ABC):
                     e,
                     exc_info=True,
                 )
-            await asyncio.sleep(2**attempt)
+            await asyncio.sleep(2 ** attempt)
         raise RuntimeError(
             f"generate_json_async failed after {retries + 1} attempts. Last error: {type(last_error).__name__}: {last_error}"
         )

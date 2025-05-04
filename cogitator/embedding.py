@@ -1,12 +1,12 @@
-import abc
+from abc import ABC, abstractmethod
 from typing import List, Optional
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
 
-class BaseEmbedder(abc.ABC):
-    @abc.abstractmethod
+class BaseEmbedder(ABC):
+    @abstractmethod
     def encode(self, texts: List[str]) -> List[np.ndarray]: ...
 
 

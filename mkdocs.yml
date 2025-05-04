@@ -47,7 +47,7 @@ nav:
           - LeastToMost: api/least_to_most.md
           - SelfConsistency: api/sc_cot.md
           - TreeOfThoughts: api/tree_of_thoughts.md
-  - Benchmarking: benchmarking.md
+  - Benchmarking: benchmarks.md
   - Contributing: contributing.md
 
 markdown_extensions:
