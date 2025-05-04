@@ -50,6 +50,7 @@ typecheck: ## Typecheck the Python files
 clean: ## Remove build artifacts, caches, and temporary files
 	find . -type f -name '*.pyc' -delete
 	find . -type d -name '__pycache__' -exec rm -r {} +
+	rm -rf site dist
 	rm -rf .mypy_cache .pytest_cache .ruff_cache .coverage htmlcov coverage.xml junit
 
 # Build and publish
@@ -75,6 +76,10 @@ example-ollama: ## Run the examples using Ollama
 	   echo "Running $$script --provider ollama --model-name $(OLLAMA_MODEL)"; \
 	   $(POETRY) run python $$script --provider ollama --model-name $(OLLAMA_MODEL); \
 	done
+
+.PHONY: docs
+docs: ## Generate the project documentation
+	$(POETRY) run mkdocs build
 
 # All-in-one target
 .PHONY: all

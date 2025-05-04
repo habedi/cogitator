@@ -5,10 +5,10 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
-from .clustering import BaseClusterer, KMeansClusterer
-from .embedding import BaseEmbedder, SentenceTransformerEmbedder
-from .model import BaseLLM
-from .utils import accuracy, exact_match
+from ..clustering import BaseClusterer, KMeansClusterer
+from ..embedding import BaseEmbedder, SentenceTransformerEmbedder
+from ..model import BaseLLM
+from ..utils import accuracy, exact_match
 
 logger = logging.getLogger(__name__)
 

@@ -5,8 +5,8 @@ from typing import List, Literal, Optional, Tuple
 
 from pydantic import ValidationError
 
-from .model import BaseLLM
-from .schemas import ExtractedAnswer, LTMDecomposition
+from ..model import BaseLLM
+from ..schemas import ExtractedAnswer, LTMDecomposition
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,7 @@
 import pytest
 
+from cogitator import ThoughtExpansion, EvaluationResult
 from cogitator import TreeOfThoughts
-from cogitator.schemas import ThoughtExpansion, EvaluationResult
 
 
 def test_run_returns_final_and_calls_prompts(fake_llm_factory):

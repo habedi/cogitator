@@ -1,4 +1,3 @@
-# ./benches/shared.py
 import argparse
 import logging
 import os
@@ -199,7 +198,10 @@ class Datasets:
                 if not question_text or not choices or not answer_key or len(choices) < 1:
                     logger.warning(f"Skipping incomplete item in commonsense_qa: {item.get('id', 'N/A')}")
                     continue
-                question_with_choices = f"{question_text}\nChoices: {' '.join([f'({chr(ord('A') + i)}) {c}' for i, c in enumerate(choices)])}"
+                # --- Start FIX ---
+                choices_str = ' '.join([f'({chr(ord("A") + i)}) {c}' for i, c in enumerate(choices)])
+                question_with_choices = f"{question_text}\nChoices: {choices_str}"
+                # --- End FIX ---
                 qs.append(question_with_choices)
                 idx = ord(answer_key) - ord("A")
                 if 0 <= idx < len(choices):

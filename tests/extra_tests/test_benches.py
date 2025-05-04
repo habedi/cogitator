@@ -12,6 +12,11 @@ import benches.shared as benchmark_shared
 from cogitator import ExtractedAnswer
 
 
+@pytest.fixture(autouse=True)
+def patch_sentence_transformer_init(mocker):
+    mocker.patch("sentence_transformers.SentenceTransformer", return_value=MagicMock())
+
+
 @pytest.fixture
 def mock_load_dataset(mocker):
     mock_ds = MagicMock(spec=Dataset)
@@ -23,7 +28,7 @@ def mock_load_dataset(mocker):
 
 
 @pytest.fixture
-def mock_get_llm(mocker):
+def mock_llm(mocker):
     mock_llm_instance = MagicMock()
     mock_llm_instance.generate.return_value = "Mock LLM Response"
     mock_llm_instance.generate_json.return_value = MagicMock(final_answer="Mock JSON")
@@ -36,7 +41,10 @@ def mock_get_llm(mocker):
 
     async def async_json_side_effect(*args, **kwargs):
         await asyncio.sleep(0)
-        return MagicMock(final_answer="Mock Async JSON")
+        # Return an object that behaves like ExtractedAnswer for attribute access
+        mock_answer = MagicMock(spec=ExtractedAnswer)
+        mock_answer.final_answer = "Mock Async JSON"
+        return mock_answer
 
     mock_llm_instance.generate_json_async = MagicMock(side_effect=async_json_side_effect)
     return mock_llm_instance
@@ -90,6 +98,13 @@ def mock_cot_methods(mocker):
     mocker.patch("cogitator.TreeOfThoughts.run_async", side_effect=tot_run_async_side_effect)
     mocker.patch("cogitator.GraphOfThoughts.run", return_value="GoT Mock Output")
     mocker.patch("cogitator.GraphOfThoughts.run_async", side_effect=got_run_async_side_effect)
+
+
+@pytest.fixture
+def mock_st_embeddings(mocker):
+    mock_st_instance = MagicMock()
+    mock_st_instance.encode.return_value = [MagicMock()]
+    mocker.patch("sentence_transformers.SentenceTransformer", return_value=mock_st_instance)
 
 
 DEFAULT_PROVIDER = benchmark_shared.DEFAULT_PROVIDER
@@ -199,19 +214,8 @@ def test_add_evaluation_args():
 
 
 @pytest.mark.asyncio
-async def test_benchmark_run_main_sync_flow(mocker, mock_load_dataset, mock_get_llm,
-                                            mock_cot_methods, tmp_path):
-    # --- ADD MOCK ---
-    # Prevent SentenceTransformer from initializing and trying to use CUDA
-    mock_st_instance = MagicMock()
-    mock_st_instance.encode.return_value = [MagicMock()]  # Mock encode if it might be called
-    mocker.patch("sentence_transformers.SentenceTransformer", return_value=mock_st_instance)
-    # Optional: Also explicitly mock the embedder in cogitator if the above isn't enough
-    # mock_embedder_instance = MagicMock()
-    # mock_embedder_instance.encode.return_value = [MagicMock()]
-    # mocker.patch("cogitator.embedding.SentenceTransformerEmbedder", return_value=mock_embedder_instance)
-    # --- END MOCK ---
-
+async def test_benchmark_run_main_sync_flow(mocker, mock_load_dataset, mock_llm,
+                                            mock_cot_methods, mock_st_embeddings, tmp_path):
     output_file = tmp_path / "results.jsonl"
     config_file = tmp_path / "bench_config.yml"
     config_file.touch()
@@ -219,7 +223,7 @@ async def test_benchmark_run_main_sync_flow(mocker, mock_load_dataset, mock_get_
     mocker.patch("sys.argv",
                  ["benches/run.py", "--dataset", "gsm8k", "--cutoff", "1", "--provider", "ollama",
                   "--output-file", str(output_file)])
-    mocker.patch("benches.shared.get_llm", return_value=mock_get_llm)
+    mocker.patch("benches.run.get_llm", return_value=mock_llm)
     with patch.object(benchmark_shared.Datasets, "_process_gsm8k", return_value=(["q1"], ["g1"])):
         mocker.patch("benches.run.run_setup_phase", return_value=True)
         await benchmark_run.main()
@@ -228,8 +232,8 @@ async def test_benchmark_run_main_sync_flow(mocker, mock_load_dataset, mock_get_
 
 
 @pytest.mark.asyncio
-async def test_benchmark_run_main_async_flow(mocker, mock_load_dataset, mock_get_llm,
-                                             mock_cot_methods, tmp_path):
+async def test_benchmark_run_main_async_flow(mocker, mock_load_dataset, mock_llm,
+                                             mock_cot_methods, mock_st_embeddings, tmp_path):
     output_file = tmp_path / "results_async.jsonl"
     config_file = tmp_path / "bench_config_async.yml"
     config_file.touch()
@@ -237,7 +241,7 @@ async def test_benchmark_run_main_async_flow(mocker, mock_load_dataset, mock_get
     mocker.patch("sys.argv",
                  ["benches/run.py", "--dataset", "gsm8k", "--cutoff", "1", "--provider", "ollama",
                   "--output-file", str(output_file), "--use-async", "--concurrency", "1"])
-    mocker.patch("benches.shared.get_llm", return_value=mock_get_llm)
+    mocker.patch("benches.run.get_llm", return_value=mock_llm)
     with patch.object(benchmark_shared.Datasets, "_process_gsm8k", return_value=(["q1"], ["g1"])):
         mocker.patch("benches.run.run_setup_phase", return_value=True)
         await benchmark_run.main()
@@ -258,13 +262,12 @@ async def test_benchmark_evaluate_main_heuristic(mocker, tmp_path):
                   "heuristic", "--provider", "ollama"])
     mocker.patch("polars.DataFrame.select")
     mocker.patch("builtins.print")
-    mocker.patch("benches.shared.get_llm")
+    mocker.patch("benches.evaluate.get_llm")
     await benchmark_evaluate.main()
 
 
-@pytest.mark.xfail(reason="Known issue: generate_json_async mock is not called in evaluate.py test")
 @pytest.mark.asyncio
-async def test_benchmark_evaluate_main_llm(mocker, tmp_path):
+async def test_benchmark_evaluate_main_llm(mocker, mock_llm, tmp_path):
     input_content = """{"question": "q1", "gold": "10", "method": "MethodA", "dataset": "gsm8k", "raw_output": "Some reasoning... 10", "time": 1.0}"""
     input_file = tmp_path / "eval_in_llm.jsonl"
     input_file.write_text(input_content.strip())
@@ -276,20 +279,21 @@ async def test_benchmark_evaluate_main_llm(mocker, tmp_path):
                   "--provider", "ollama"])
     mocker.patch("polars.DataFrame.select")
     mocker.patch("builtins.print")
-    mock_llm_instance = MagicMock()
-    expected_result_obj = MagicMock(spec=ExtractedAnswer)
-    expected_result_obj.final_answer = "10"
-    future_result = asyncio.Future()
-    future_result.set_result(expected_result_obj)
-    mock_llm_instance.generate_json_async = MagicMock(return_value=future_result)
-    mocker.patch("benches.shared.get_llm", return_value=mock_llm_instance)
+
+    mocker.patch("benches.evaluate.get_llm", return_value=mock_llm)
+
     await benchmark_evaluate.main()
-    mock_llm_instance.generate_json_async.assert_called()
-    mock_llm_instance.generate_json_async.assert_called_once_with(mocker.ANY,
-                                                                  response_model=ExtractedAnswer,
-                                                                  temperature=mocker.ANY,
-                                                                  max_tokens=mocker.ANY,
-                                                                  seed=mocker.ANY)
+
+    mock_llm.generate_json_async.assert_called()
+
+    # More specific check if needed, using mocker.ANY for potentially variable args
+    mock_llm.generate_json_async.assert_called_once_with(
+        mocker.ANY,  # The prompt string
+        response_model=ExtractedAnswer,
+        temperature=mocker.ANY,
+        max_tokens=mocker.ANY,
+        seed=mocker.ANY
+    )
 
 
 def test_load_config_no_file_defaults(mock_args_namespace_factory, generation_parser):
@@ -419,8 +423,7 @@ evaluation: {extractor: {type: heuristic}}
     assert merged_config['extractor_type'] == "heuristic"
 
 
-def test_load_config_malformed_yaml(tmp_path, mock_args_namespace_factory, generation_parser,
-                                    caplog):
+def test_load_config_malformed_yaml(tmp_path, mock_args_namespace_factory, generation_parser, caplog):
     args = mock_args_namespace_factory()
     yaml_content = "generation: { provider: openai, model_name: [invalid"
     config_file = tmp_path / "malformed.yml"

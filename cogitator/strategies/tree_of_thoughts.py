@@ -3,8 +3,8 @@ import logging
 import math
 from typing import List, Optional
 
-from .model import BaseLLM
-from .schemas import EvaluationResult, ThoughtExpansion
+from ..model import BaseLLM
+from ..schemas import EvaluationResult, ThoughtExpansion
 
 logger = logging.getLogger(__name__)
 

@@ -7,7 +7,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-# Add examples directory to path to allow importing
+# --- Test Setup ---
+# Add the examples directory to the path for module imports
 examples_dir = Path(__file__).parent.parent / "examples"
 sys.path.insert(0, str(examples_dir.parent))
 

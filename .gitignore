@@ -79,3 +79,4 @@ poetry.lock
 benches/data/
 coverage_*_report
 *.jsonl
+site/
