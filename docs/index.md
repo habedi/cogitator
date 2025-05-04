@@ -1,9 +1,9 @@
-# Welcome to Cogitator
+# Cogitator Documentation
 
 Cogitator is a Python library designed for implementing, experimenting with, and benchmarking various Chain-of-Thought (CoT)
 prompting techniques for Large Language Models (LLMs).
 
-## Features
+## Overview
 
 * Implementations of popular CoT strategies (Self-Consistency, AutoCoT, Least-to-Most, Tree of Thoughts, Graph of Thoughts,
   CDW-CoT).
@@ -13,17 +13,20 @@ prompting techniques for Large Language Models (LLMs).
 * Robust handling of structured JSON output using Pydantic validation (`schemas.py`).
 * A comprehensive benchmarking framework (`benches/`) to evaluate and compare CoT methods.
 
-## Getting Started
+## Installation
 
 Cogitator can be installed via pip using the following command:
 
-```bash
+```shell
 pip install cogitator
 ```
 
-Check the [examples](https://www.google.com/search?q=./examples/) directory in the repository.
+### Examples
 
-## Navigation
+Check the [examples](https://github.com/habedi/cogitator/blob/main/examples) for usage examples on how to use the library with
+different LLM providers and CoT strategies.
+
+## Documentation
 
 * **API Reference:** Detailed documentation for modules, classes, and functions.
     * [BaseLLM](api/model.md): The abstract base class for LLM providers.
@@ -39,7 +42,7 @@ Check the [examples](https://www.google.com/search?q=./examples/) directory in t
         * [LeastToMost](api/least_to_most.md)
         * [SelfConsistency](api/sc_cot.md)
         * [TreeOfThoughts](api/tree_of_thoughts.md)
-* **Benchmarking:** Information on how to use the [benchmarking framework](benchmarks.md).
+* **Benchmarks:** Information on how to use the [benchmarking framework](benchmarks.md).
 * **Contributing:** Guidelines for [contributing](contributing.md) to the project.
 
 <!-- end list -->

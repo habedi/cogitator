@@ -22,7 +22,7 @@ command-line arguments passed to the scripts.
 ## How to Run
 
 Detailed instructions on how to configure and run the benchmarks are available in the benchmarking README
-[(`benches/README.md`)](https://github.com/habedi/cogitator/blob/main/benches/README.md).
+([`benches/README.md`](https://github.com/habedi/cogitator/blob/main/benches/README.md)).
 This includes:
 
 * Command-line options for `run.py` and `evaluate.py`.

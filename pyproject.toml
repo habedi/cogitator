@@ -1,15 +1,15 @@
 [tool.poetry]
 name = "cogitator"
-version = "0.1.0a3"
+version = "0.1.0b1"
 description = "A Python toolkit for chain-of-thought prompting"
 authors = ["Hassan Abedi <hassan.abedi.t+cogitator@gmail.com>"]
 license = "MIT"
 readme = "README.md"
 packages = [{ include = "cogitator" }]
 repository = "https://github.com/habedi/cogitator"
-documentation = "https://github.com/habedi/cogitator/blob/main/docs/README.md"
+documentation = "https://habedi.github.io/cogitator"
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",

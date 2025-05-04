@@ -10,11 +10,11 @@
 [![Code Coverage](https://img.shields.io/codecov/c/github/habedi/cogitator?style=flat&label=coverage&labelColor=333333&logo=codecov&logoColor=white)](https://codecov.io/gh/habedi/cogitator)
 [![Code Quality](https://img.shields.io/codefactor/grade/github/habedi/cogitator?style=flat&label=code%20quality&labelColor=333333&logo=codefactor&logoColor=white)](https://www.codefactor.io/repository/github/habedi/cogitator)
 [![Python Version](https://img.shields.io/badge/python-%3E=3.10-3776ab?style=flat&labelColor=333333&logo=python&logoColor=white)](https://github.com/habedi/cogitator)
-[![PyPI Version](https://img.shields.io/pypi/v/cogitator.svg?style=flat&label=pypi&labelColor=333333&logo=pypi&logoColor=white&color=3775a9)](https://pypi.org/project/cogitator/)
+[![PyPI Version](https://img.shields.io/pypi/v/cogitator.svg?style=flat&label=pypi&labelColor=333333&logo=pypi&logoColor=white&color=3775a9)](https://pypi.org/project/cogitator)
 [![Downloads](https://img.shields.io/pypi/dm/cogitator.svg?style=flat&label=downloads&labelColor=333333&logo=pypi&logoColor=white&color=cc8400)](https://github.com/habedi/cogitator)
 <br>
 [![License](https://img.shields.io/badge/license-MIT-00acc1?style=flat&labelColor=333333&logo=open-source-initiative&logoColor=white)](https://github.com/habedi/cogitator/blob/main/LICENSE)
-[![Documentation](https://img.shields.io/badge/docs-latest-8ca0d7?style=flat&labelColor=333333&logo=readthedocs&logoColor=white)](https://github.com/habedi/cogitator/blob/main/docs)
+[![Docs](https://img.shields.io/badge/docs-latest-8ca0d7?style=flat&labelColor=333333&logo=readthedocs&logoColor=white)](https://habedi.github.io/cogitator)
 [![DOI](https://img.shields.io/badge/doi-10.5281/zenodo.15331821-6f42c1.svg?style=flat&labelColor=333333&logo=zenodo&logoColor=white)](https://doi.org/10.5281/zenodo.15331821)
 
 A Python toolkit for chain-of-thought prompting
@@ -50,6 +50,8 @@ applications.
 
 ### Getting Started
 
+You can install Cogitator with
+
 ```bash
 pip install cogitator
 ```
@@ -69,7 +71,7 @@ poetry run pytest
 
 #### Examples
 
-See the [examples](examples) directory for examples.
+Below is a simple example of using the Self-Consistency CoT with Ollama.
 
 ```python
 import logging
@@ -109,11 +111,13 @@ final_answer = sc_strategy.run(prompt)  # Returns the most consistent (repeated)
 print(f"\nCogitator's Answer (Self-Consistency): {final_answer}")
 ```
 
+Check out the [examples](examples) directory for more examples.
+
 ---
 
 ### Documentation
 
-See the [docs](docs) directory for the documentation for the Cogitator toolkit.
+Cogitator documentation is available [here](https://habedi.github.io/cogitator).
 
 ---
 

@@ -4,7 +4,7 @@ repo_url: https://github.com/habedi/cogitator
 repo_name: habedi/cogitator
 
 theme:
-  name: material
+  name: readthedocs
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
