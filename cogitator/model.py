@@ -161,7 +161,6 @@ class OpenAILLM(BaseLLM):
         "gpt-4o-mini-2024-07-18",
     }
 
-    # This set includes the structured output models plus older ones
     _JSON_MODE_SUPPORTING_MODELS = {
         "gpt-4",
         "gpt-4-turbo",
@@ -173,7 +172,7 @@ class OpenAILLM(BaseLLM):
     def __init__(
         self,
         api_key: str,
-        model: str = "gpt-4.1-nano",  # Don't change this value
+        model: str = "gpt-4.1-nano",
         temperature: float = 0.7,
         max_tokens: int = 512,
         stop: Optional[List[str]] = None,
@@ -210,15 +209,11 @@ class OpenAILLM(BaseLLM):
 
         if is_json_mode:
             if response_schema:
-                # --- Schema IS Provided ---
                 if supports_structured:
-                    # Model definitely supports json_schema
                     try:
                         schema_dict = response_schema.model_json_schema()
-                        # --- FIX: Add additionalProperties=False ---
                         if schema_dict.get("type") == "object":
                             schema_dict["additionalProperties"] = False
-                        # --- End FIX ---
                         params["response_format"] = {
                             "type": "json_schema",
                             "json_schema": {
@@ -237,7 +232,6 @@ class OpenAILLM(BaseLLM):
                         logger.warning(
                             f"Failed to generate/set JSON schema for {response_schema.__name__}: {e}. Falling back."
                         )
-                        # Attempt fallback to json_object if schema generation failed but model supports it
                         if supports_json_object:
                             params["response_format"] = {"type": "json_object"}
                             mode_used = "json_object"
@@ -251,7 +245,6 @@ class OpenAILLM(BaseLLM):
                             )
 
                 elif supports_json_object:
-                    # Model only supports json_object, use that even though schema was provided
                     params["response_format"] = {"type": "json_object"}
                     mode_used = "json_object"
                     logger.debug(
@@ -259,7 +252,6 @@ class OpenAILLM(BaseLLM):
                     )
 
                 else:
-                    # Model supports neither, but schema provided: Try json_schema anyway (aggressive)
                     logger.warning(
                         f"Model {self.model} not known to support JSON modes. Attempting json_schema anyway as schema was provided..."
                     )
@@ -283,22 +275,18 @@ class OpenAILLM(BaseLLM):
                         logger.warning(
                             f"Failed to generate/set JSON schema for unsupported model attempt: {e}. Relying on extraction."
                         )
-                        mode_used = None  # Failed attempt defaults to extraction
+                        mode_used = None
             else:
-                # --- Schema IS NOT Provided ---
                 if supports_json_object:
-                    # Use json_object if supported
                     params["response_format"] = {"type": "json_object"}
                     mode_used = "json_object"
                     logger.debug("Using OpenAI JSON mode (json_object) as no schema provided.")
                 else:
-                    # No schema, no json_object support -> rely on extraction
                     mode_used = None
                     logger.debug(
                         "JSON requested, no schema, model doesn't support json_object. Relying on extraction."
                     )
         else:
-            # Not a JSON mode request
             mode_used = None
 
         if "seed" not in params and self.seed is not None:
@@ -306,7 +294,6 @@ class OpenAILLM(BaseLLM):
 
         return params, mode_used
 
-    # ... (Keep other OpenAILLM methods: _call_api, _call_api_async, generate, generate_async, _generate_json_internal, _generate_json_internal_async, generate_stream, generate_stream_async) ...
     def _call_api(
         self,
         is_json_mode: bool = False,
@@ -507,7 +494,7 @@ class OpenAILLM(BaseLLM):
 class OllamaLLM(BaseLLM):
     def __init__(
         self,
-        model: str = "gemma3:4b",  # Don't change this value
+        model: str = "gemma3:4b",
         temperature: float = 0.7,
         max_tokens: int = 1024,
         stop: Optional[List[str]] = None,
@@ -523,14 +510,17 @@ class OllamaLLM(BaseLLM):
         try:
             self._client = Client(host=self.host)
             self._async_client = AsyncClient(host=self.host)
-            logger.debug(
-                f"Checking available models on Ollama host: {self._client.list()}", exc_info=True
-            )
+            logger.debug("Attempting to check Ollama models...")
+
+            logger.debug(f"Ollama client initialized for host: {self.host}")
         except Exception as e:
             logger.error(
                 f"Failed to initialize Ollama client (host: {self.host}): {e}", exc_info=True
             )
-            raise ConnectionError(f"Could not connect to Ollama host: {self.host}") from e
+
+            logger.warning(
+                f"Could not establish initial connection to Ollama host: {self.host}. Client created, but connection may fail later."
+            )
 
     def _strip_content(self, resp: Any) -> str:
         content = ""
@@ -543,7 +533,8 @@ class OllamaLLM(BaseLLM):
                 content = getattr(resp.message, "content", "")
         except AttributeError as e:
             logger.warning(f"Could not extract content from Ollama response object: {e}")
-        return content if isinstance(content, str) else ""
+
+        return str(content).strip() if isinstance(content, (str, int, float)) else ""
 
     def _prepare_options(self, **kwargs: Any) -> dict[str, Any]:
         opts = {
@@ -565,7 +556,7 @@ class OllamaLLM(BaseLLM):
             resp = self._client.chat(
                 model=self.model, messages=[{"role": "user", "content": prompt}], options=opts
             )
-            return self._strip_content(resp).strip()
+            return self._strip_content(resp)
         except Exception as e:
             logger.error(f"Ollama generate failed for model {self.model}: {e}", exc_info=True)
             raise RuntimeError(f"Ollama generate failed: {e}") from e
@@ -576,7 +567,7 @@ class OllamaLLM(BaseLLM):
             resp = await self._async_client.chat(
                 model=self.model, messages=[{"role": "user", "content": prompt}], options=opts
             )
-            return self._strip_content(resp).strip()
+            return self._strip_content(resp)
         except Exception as e:
             logger.error(f"Ollama async generate failed for model {self.model}: {e}", exc_info=True)
             raise RuntimeError(f"Ollama async generate failed: {e}") from e
@@ -608,8 +599,12 @@ class OllamaLLM(BaseLLM):
                 format=schema,
                 options=opts,
             )
-
-            return self._strip_content(resp), mode_used
+            raw_content = ""
+            if isinstance(resp, dict) and resp.get("message"):
+                raw_content = resp["message"].get("content", "")
+            elif hasattr(resp, "message") and hasattr(resp.message, "content"):
+                raw_content = getattr(resp.message, "content", "")
+            return raw_content, mode_used
         except Exception as e:
             logger.error(
                 f"Ollama JSON generation failed for model {self.model}: {e}", exc_info=True
@@ -629,7 +624,12 @@ class OllamaLLM(BaseLLM):
                 format=schema,
                 options=opts,
             )
-            return self._strip_content(resp), mode_used
+            raw_content = ""
+            if isinstance(resp, dict) and resp.get("message"):
+                raw_content = resp["message"].get("content", "")
+            elif hasattr(resp, "message") and hasattr(resp.message, "content"):
+                raw_content = getattr(resp.message, "content", "")
+            return raw_content, mode_used
         except Exception as e:
             logger.error(
                 f"Ollama async JSON generation failed for model {self.model}: {e}", exc_info=True

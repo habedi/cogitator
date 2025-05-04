@@ -1,9 +1,10 @@
 import logging
+
 from cogitator import SelfConsistency, OllamaLLM
 
 # Step 1: Configure logging (optional, but helpful)
 logging.basicConfig(level=logging.INFO)
-logging.getLogger("httpx").setLevel(logging.WARNING) # Suppress HTTPX logs
+logging.getLogger("httpx").setLevel(logging.WARNING)  # Suppress HTTPX logs
 
 # Step 2: Initialize the LLM (using Ollama)
 # Needs Ollama running locally with the model pulled (e.g., `ollama pull gemma3:4b`)

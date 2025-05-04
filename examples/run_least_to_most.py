@@ -4,7 +4,6 @@ import asyncio
 import logging
 
 from cogitator import LeastToMost
-
 from examples.shared import get_llm, run_main, setup_logging
 
 setup_logging()
