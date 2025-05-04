@@ -12,6 +12,11 @@ import benches.shared as benchmark_shared
 from cogitator import ExtractedAnswer
 
 
+@pytest.fixture(autouse=True)
+def patch_sentence_transformer_init(mocker):
+    mocker.patch("sentence_transformers.SentenceTransformer", return_value=MagicMock())
+
+
 @pytest.fixture
 def mock_load_dataset(mocker):
     mock_ds = MagicMock(spec=Dataset)
