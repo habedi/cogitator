@@ -199,11 +199,9 @@ class Datasets:
                     logger.warning(
                         f"Skipping incomplete item in commonsense_qa: {item.get('id', 'N/A')}")
                     continue
-                # --- Start FIX ---
                 choices_str = ' '.join(
                     [f'({chr(ord("A") + i)}) {c}' for i, c in enumerate(choices)])
                 question_with_choices = f"{question_text}\nChoices: {choices_str}"
-                # --- End FIX ---
                 qs.append(question_with_choices)
                 idx = ord(answer_key) - ord("A")
                 if 0 <= idx < len(choices):

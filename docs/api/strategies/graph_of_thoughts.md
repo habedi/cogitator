@@ -2,13 +2,13 @@
 
 Implementation of the Graph of Thoughts (GoT) reasoning framework, inspired by [this paper](https://arxiv.org/abs/2308.09687).
 
-This implementation represents the reasoning process as a graph where nodes are thoughts and edges represent transformations. The
-flow of reasoning is controlled by a **Graph of Operations (GoO)**.
+This implementation represents the reasoning process as a graph where nodes are thoughts and edges represent transformations.
+The flow of reasoning is controlled by a **Graph of Operations (GoO)**.
 
 ## Defining the Graph of Operations (GoO)
 
-To use `GraphOfThoughts`, you must provide a `graph_of_operations` argument to the `run_async` method. This argument is a list of
-tuples, where each tuple defines an operation step:
+To use `GraphOfThoughts`, you must provide a `graph_of_operations` argument to the `run_async` method.
+This argument is a list of tuples, where each tuple defines an operation step:
 
 `graph_of_operations: List[Tuple[str, Dict]]`
 
@@ -45,7 +45,8 @@ EXAMPLE_GOO = [
 
 ## Available Operations
 
-Here are the standard operations available. You can create custom operations by subclassing `GoTOperation`.
+Here are the standard operations available.
+You can create custom operations by subclassing `GoTOperation`.
 
 ### Base Operation Class
 
@@ -64,10 +65,6 @@ Here are the standard operations available. You can create custom operations by 
         show_source: false
         members_order: source
         heading_level: 3
-
-# Exclude inherited methods if desired
-
-# members: ["__init__", "execute_async", "execute"] # Or list specific ones
 
 ### Score Operation
 
@@ -106,7 +103,7 @@ These classes manage the internal graph structure.
     options:
         show_root_heading: true
         show_source: false
-        members: ["__init__"] # Only show init maybe?
+        members: ["__init__"]
         heading_level: 3
 
 ### GraphReasoningState
