@@ -283,7 +283,8 @@ class SelfConsistency:
             return ""
 
     async def run_async(
-        self, prompt: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any) -> str:
+        self, prompt: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
+    ) -> str:
         """Asynchronously executes the Self-Consistency strategy.
 
         Generates `n_samples` reasoning paths concurrently using async LLM calls.

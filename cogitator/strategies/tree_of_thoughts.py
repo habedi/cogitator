@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import math
-from typing import List, Optional, Any
+from typing import Any, List, Optional
 
 from ..model import BaseLLM
 from ..schemas import EvaluationResult, ThoughtExpansion

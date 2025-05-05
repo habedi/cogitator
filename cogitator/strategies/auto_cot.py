@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from typing import List, Optional, Tuple, Any
+from typing import Any, List, Optional, Tuple
 
 import numpy as np
 
@@ -126,7 +126,7 @@ class AutoCoT:
         logger.info(f"Generating CoT reasoning for {len(candidate_demos)} candidates...")
         demos: List[str] = []
         # Use enumerate for a simple loop counter if needed, but idx is usually better
-        for demo_idx, (original_q_idx, q) in enumerate(candidate_demos):
+        for _demo_idx, (original_q_idx, q) in enumerate(candidate_demos):
             prompt = f"Q: {q}\nA: {self.prompt_template}"
             cot: Optional[str] = None
             for attempt in range(self.max_retries + 1):
@@ -141,7 +141,8 @@ class AutoCoT:
 
                 try:
                     logger.debug(
-                        f"Attempt {attempt + 1} for Q idx {original_q_idx} with seed {iter_seed}")
+                        f"Attempt {attempt + 1} for Q idx {original_q_idx} with seed {iter_seed}"
+                    )
                     cot = self.llm.generate(
                         prompt,
                         max_tokens=self.max_tokens,
@@ -151,17 +152,19 @@ class AutoCoT:
                 except Exception as e:
                     logger.warning(
                         f"Retry {attempt + 1}/{self.max_retries + 1} for demo Q idx {original_q_idx}: {e}",
-                        exc_info=(logger.getEffectiveLevel() <= logging.DEBUG)
+                        exc_info=(logger.getEffectiveLevel() <= logging.DEBUG),
                         # Show traceback in debug
                     )
                     if attempt < self.max_retries:
                         # Optional: add a small delay before retrying
-                        time.sleep(0.5 * (2 ** attempt))
+                        time.sleep(0.5 * (2**attempt))
 
             if cot is None:
                 logger.error(
                     "Failed to generate demo for Q idx %d ('%s') after %d retries",
-                    original_q_idx, q[:50] + "...", self.max_retries + 1
+                    original_q_idx,
+                    q[:50] + "...",
+                    self.max_retries + 1,
                 )
                 continue  # Skip this candidate
 
@@ -170,10 +173,12 @@ class AutoCoT:
             if steps_count <= self.max_steps:
                 demos.append(f"Q: {q}\nA: {cot}")
                 logger.debug(
-                    f"Successfully generated and filtered demo for Q idx {original_q_idx} ({steps_count} steps)")
+                    f"Successfully generated and filtered demo for Q idx {original_q_idx} ({steps_count} steps)"
+                )
             else:
                 logger.debug(
-                    f"Generated demo for Q idx {original_q_idx} discarded ({steps_count} steps > max {self.max_steps})")
+                    f"Generated demo for Q idx {original_q_idx} discarded ({steps_count} steps > max {self.max_steps})"
+                )
 
         if len(demos) < self.n_demos:
             logger.warning(
@@ -246,7 +251,8 @@ class AutoCoT:
 
                 try:
                     logger.debug(
-                        f"Async attempt {attempt + 1} for Q idx {idx} with seed {iter_seed}")
+                        f"Async attempt {attempt + 1} for Q idx {idx} with seed {iter_seed}"
+                    )
                     gen_args = {
                         "max_tokens": self.max_tokens,
                         "seed": iter_seed,
@@ -259,14 +265,16 @@ class AutoCoT:
                 except Exception as e:
                     logger.warning(
                         f"Async retry {attempt + 1}/{self.max_retries + 1} for demo Q idx {idx}: {e}",
-                        exc_info=(logger.getEffectiveLevel() <= logging.DEBUG)
+                        exc_info=(logger.getEffectiveLevel() <= logging.DEBUG),
                     )
                     if attempt < self.max_retries:
-                        await asyncio.sleep(0.5 * (2 ** attempt))
+                        await asyncio.sleep(0.5 * (2**attempt))
 
             logger.error(
                 "Failed to generate async demo for Q idx %d ('%s') after %d retries",
-                idx, q[:50] + "...", self.max_retries + 1,
+                idx,
+                q[:50] + "...",
+                self.max_retries + 1,
             )
             return idx, q, None  # Failed after retries
 
@@ -289,10 +297,12 @@ class AutoCoT:
                     if steps_count <= self.max_steps:
                         demos.append(f"Q: {q}\nA: {cot}")
                         logger.debug(
-                            f"Successfully generated and filtered async demo for Q idx {_idx} ({steps_count} steps)")
+                            f"Successfully generated and filtered async demo for Q idx {_idx} ({steps_count} steps)"
+                        )
                     else:
                         logger.debug(
-                            f"Async demo for Q idx {_idx} discarded ({steps_count} steps > max {self.max_steps})")
+                            f"Async demo for Q idx {_idx} discarded ({steps_count} steps > max {self.max_steps})"
+                        )
             else:
                 logger.error(f"Unexpected result type from gather: {type(res)} - {res}")
 
@@ -304,7 +314,8 @@ class AutoCoT:
             )
         if not demos:
             logger.error(
-                "Failed to build any valid demos asynchronously after generation and filtering.")
+                "Failed to build any valid demos asynchronously after generation and filtering."
+            )
             raise RuntimeError("Failed to build any valid demos asynchronously.")
 
         self.demos = demos
@@ -334,8 +345,9 @@ class AutoCoT:
 
         context = "\n\n".join(self.demos)
         payload = f"{context}\n\nQ: {test_q}\nA: {self.prompt_template}"
-        logger.debug("AutoCoT final inference payload:\n%s",
-                     payload[:500] + "...")  # Log truncated payload
+        logger.debug(
+            "AutoCoT final inference payload:\n%s", payload[:500] + "..."
+        )  # Log truncated payload
 
         final_seed = kwargs.pop("seed", self.rand_seed)
         final_max_tokens = kwargs.pop("max_tokens", self.max_tokens)

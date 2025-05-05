@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import time
-from typing import List, Optional, Tuple, Any
+from typing import Any, List, Optional, Tuple, Coroutine
 
 import numpy as np
 
@@ -53,11 +53,11 @@ class CDWCoT:
 
         Args:
             llm: The language model instance.
-            pool_size: The target size of the demonstration prompt pool (PC).
+            pool_size: The target size of the demonstration prompt pool.
             n_clusters: The number of clusters to divide the training questions into.
             lr: Learning rate for updating the cluster distributions during training.
             sample_size: Number of demonstrations to sample for context during training
-                         validation and final inference. Also used as batch size during training.
+                         validation and final inference. Also used as the batch size during training.
             seed: Random seed for clustering, sampling, and potential LLM calls.
             max_tokens: Default maximum tokens for LLM generation calls.
             max_grad_norm: Maximum norm for clipping gradients during training.
@@ -151,7 +151,7 @@ class CDWCoT:
         return selected_candidates
 
     def init_pool(self, questions: List[str], answers: List[str], **kwargs: Any) -> None:
-        """Initializes the prompt pool (PC) by generating CoT for selected candidates.
+        """Initializes the prompt pool by generating CoT for selected candidates.
 
         Uses `_select_pool_indices` to get candidates, then generates CoT reasoning
         for each using the LLM. Stores successful generations in `self.PC`. Also
@@ -240,7 +240,7 @@ class CDWCoT:
         semaphore: Optional[asyncio.Semaphore] = None,
         **kwargs: Any,
     ) -> None:
-        """Asynchronously initializes the prompt pool (PC).
+        """Asynchronously initializes the prompt pool.
 
         Similar to `init_pool` but performs LLM generations asynchronously.
 
@@ -271,7 +271,7 @@ class CDWCoT:
             f"Generating initial CoT prompts asynchronously for {len(pool_candidates)} candidates..."
         )
 
-        async def gen(idx: int, q: str) -> Tuple[int, Optional[str]]:
+        async def gen(idx: int, q: str) -> None | tuple[int, str] | tuple[int, None]:
             prompt = f"Q: {q}\nA: Let's think step by step."
             for attempt in range(self.init_pool_retries + 1):
                 try:
@@ -353,7 +353,9 @@ class CDWCoT:
             f"Initialized prompt pool asynchronously with {M} prompts and {num_cl} uniform cluster distributions."
         )
 
-    def train(self, val_split: float = 0.2, epochs: int = 100, patience: int = 5, **kwargs: Any) -> None:
+    def train(
+        self, val_split: float = 0.2, epochs: int = 100, patience: int = 5, **kwargs: Any
+    ) -> None:
         """Trains the cluster-dependent prompt distributions.
 
         Iterates through epochs, sampling batches from each cluster's training data.
@@ -707,29 +709,45 @@ class CDWCoT:
         await asyncio.gather(*training_coroutines)
         logger.info("Asynchronous CDW-CoT training complete for all clusters.")
 
-    def _calculate_combined_distribution(self, question: str) -> np.ndarray:
-        """Calculates the prompt selection distribution for a given question.
+    def _calculate_combined_distribution(
+        self, question: str, temperature: float = 0.3
+    ) -> np.ndarray:
+        """Calculates the distance-weighted prompt selection distribution for a question.
 
-        Embeds the question, finds the nearest cluster center, and returns the
-        learned distribution for that cluster. Falls back to a uniform distribution
-        if clustering failed, distributions weren't learned, or errors occur.
+        This method implements the Distance-Weighting (Dist-W) approach described
+        in the paper. It embeds the input question, calculates its Euclidean distance
+        to all learned cluster centers, computes softmax weights based on these distances and
+        a temperature parameter, and finally returns a combined prompt probability distribution
+        by taking a weighted average of the optimal distributions learned for each cluster.
 
         Args:
-            question: The input test question.
+            question: The input test question string.
+            temperature: The temperature parameter for the softmax weight calculation.
+                         Controls sensitivity to distance.
+                         Defaults to 0.3 based on the paper's findings.
 
         Returns:
-            A NumPy array representing the probability distribution over the prompt pool (PC).
+            A NumPy array representing the combined probability distribution over the
+            prompt pool for the given question. Falls back to a uniform
+            distribution if prerequisites (pool, centers, cluster distributions)
+            are missing or if errors occur during calculation.
 
         Raises:
-            RuntimeError: If the prompt pool (PC) is empty.
+            RuntimeError: If the prompt pool is empty.
+            ValueError: If the question embedding dimension does not match the
+                        cluster center dimensions after reshaping.
         """
         M = len(self.PC)
         if M == 0:
-            raise RuntimeError("Prompt pool (PC) is empty. Cannot calculate distribution.")
+            raise RuntimeError("Prompt pool is empty. Cannot calculate distribution.")
 
-        if self.cluster_centers is None or not self.p_cluster:
+        if (
+            self.cluster_centers is None
+            or not self.p_cluster
+            or len(self.p_cluster) != self.cluster_centers.shape[0]
+        ):
             logger.warning(
-                "Cluster centers or probabilities not initialized. Falling back to uniform distribution."
+                "Cluster centers or probabilities not initialized correctly. Falling back to uniform distribution."
             )
             return np.ones(M) / M
 
@@ -744,31 +762,52 @@ class CDWCoT:
 
             if q_emb is not None and self.cluster_centers.size > 0:
                 if q_emb.shape != self.cluster_centers.shape[1:]:
-                    q_emb = q_emb.reshape(1, -1)
-                    if q_emb.shape[1] != self.cluster_centers.shape[1]:
+                    q_emb_reshaped = q_emb.reshape(1, -1)
+                    if q_emb_reshaped.shape[1] != self.cluster_centers.shape[1]:
                         raise ValueError(
-                            f"Question embedding dimension {q_emb.shape} doesn't match cluster center dimension {self.cluster_centers.shape}"
+                            f"Question embedding dimension {q_emb_reshaped.shape} doesn't match cluster center dimension {self.cluster_centers.shape}"
                         )
+                    q_emb_final = q_emb_reshaped
+                else:
+                    q_emb_final = q_emb
 
-                dists = np.linalg.norm(self.cluster_centers - q_emb, axis=1)
-                closest_cluster_idx = np.argmin(dists)
-                logger.debug(f"Question mapped to closest cluster index: {closest_cluster_idx}")
+                distances = np.linalg.norm(self.cluster_centers - q_emb_final, axis=1)
 
-                if 0 <= closest_cluster_idx < len(self.p_cluster):
-                    learned_p = self.p_cluster[closest_cluster_idx]
-                    if self._is_valid_distribution(learned_p):
-                        logger.debug(
-                            f"Using learned distribution for cluster {closest_cluster_idx}"
-                        )
-                        return learned_p
+                temp_safe = max(temperature, 1e-6)
+
+                neg_dist_over_temp = -distances / temp_safe
+                neg_dist_over_temp = neg_dist_over_temp - np.max(neg_dist_over_temp)
+                exp_values = np.exp(neg_dist_over_temp)
+                weights = exp_values / np.sum(exp_values)
+
+                logger.debug(f"Calculated weights for clusters: {weights}")
+
+                final_distribution = np.zeros(M, dtype=float)
+                valid_distributions_found = False
+                for i, weight in enumerate(weights):
+                    if i < len(self.p_cluster) and self._is_valid_distribution(self.p_cluster[i]):
+                        final_distribution += weight * self.p_cluster[i]
+                        valid_distributions_found = True
                     else:
-                        logger.warning(
-                            f"Invalid learned distribution found for cluster {closest_cluster_idx}. Falling back to uniform."
-                        )
+                        logger.warning(f"Skipping invalid or missing distribution for cluster {i}")
+
+                if not valid_distributions_found:
+                    logger.warning(
+                        "No valid cluster distributions found for weighting. Falling back to uniform."
+                    )
+                    return np.ones(M) / M
+
+                final_sum = final_distribution.sum()
+                if final_sum > 1e-9:
+                    final_distribution /= final_sum
                 else:
                     logger.warning(
-                        f"Closest cluster index {closest_cluster_idx} out of bounds for p_cluster (size {len(self.p_cluster)}). Falling back to uniform."
+                        "Weighted distribution sum is near zero. Falling back to uniform."
                     )
+                    return np.ones(M) / M
+
+                logger.debug("Using distance-weighted combined distribution.")
+                return final_distribution
             else:
                 logger.warning(
                     "Could not use question embedding or no cluster centers available. Falling back to uniform."
@@ -824,7 +863,8 @@ class CDWCoT:
         )
 
     async def run_async(
-        self, test_q: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any) -> str:
+        self, test_q: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
+    ) -> str:
         """Asynchronously runs the CDW-CoT strategy for a given test question.
 
         Similar to `run`, but performs the final LLM generation call asynchronously.

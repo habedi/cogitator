@@ -1,7 +1,7 @@
 """Provides abstractions and implementations for clustering algorithms."""
 
 from abc import ABC, abstractmethod
-from typing import Tuple, Any
+from typing import Any, Tuple
 
 import numpy as np
 from sklearn.cluster import KMeans

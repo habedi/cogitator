@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from typing import List, Literal, Optional, Tuple, Any
+from typing import Any, List, Literal, Optional, Tuple
 
 from pydantic import ValidationError
 
@@ -164,7 +164,8 @@ class LeastToMost:
         return subs[: self.max_subqs]
 
     async def decompose_async(
-        self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any) -> List[str]:
+        self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
+    ) -> List[str]:
         """Asynchronously decomposes a complex question into simpler subquestions.
 
         Args:
@@ -390,7 +391,8 @@ class LeastToMost:
         return final_answer
 
     async def run_async(
-        self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any    ) -> str:
+        self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
+    ) -> str:
         """Asynchronously executes the full Least-to-Most process for a question.
 
         Calls `decompose_async`, then `solve_async`, then formats the results and calls
