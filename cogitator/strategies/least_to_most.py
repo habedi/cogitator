@@ -22,9 +22,8 @@ class LeastToMost:
        subproblems as context for the next.
 
     Reference:
-        Zhou, D., Schärli, N., Hou, L., Wei, J., Scales, N., Wang, X., ... & Le, Q. V. (2022).
-        Least-to-Most Prompting Enables Complex Reasoning in Large Language Models.
-        arXiv preprint arXiv:2205.10625.
+        Zhou et al. (v3; 2023) "Least-to-Most Prompting Enables Complex Reasoning in Large Language Models".
+        https://arxiv.org/abs/2205.10625
     """
 
     def __init__(

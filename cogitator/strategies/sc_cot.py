@@ -20,9 +20,8 @@ class SelfConsistency:
     the most consistent answer among the paths via majority voting.
 
     Reference:
-        Wang, X., Wei, F., Schuurmans, D., Le, Q., Chi, E., Narang, S., Mirhoseini, A., & Zhou, D.
-        (2023). Self-Consistency Improves Chain of Thought Reasoning in Language Models.
-        In International Conference on Learning Representations (ICLR).
+        Wang et al. (v4; 2023) "Self-Consistency Improves Chain of Thought Reasoning in Language Models".
+        https://arxiv.org/abs/2203.11171
     """
 
     def __init__(

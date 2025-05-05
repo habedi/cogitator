@@ -21,9 +21,8 @@ class AutoCoT:
     reasoning for them using zero-shot prompts.
 
     Reference:
-        Zhang, Z., Zhang, A., Li, M., & Smola, A. (2022).
-        Automatic Chain of Thought Prompting in Large Language Models.
-        arXiv preprint arXiv:2210.03493.
+        Zhang et al. (2022) "Automatic Chain of Thought Prompting in Large Language Models".
+        https://arxiv.org/abs/2210.03493
     """
 
     def __init__(

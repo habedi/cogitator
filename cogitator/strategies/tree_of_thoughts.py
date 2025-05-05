@@ -21,9 +21,8 @@ class TreeOfThoughts:
     (updating node values) to guide the search towards promising reasoning paths.
 
     Reference:
-        Yao, S., Yu, D., Zhao, J., Shafran, I., Griffiths, T. L., Cao, Y., & Narasimhan, K. (2023).
-        Tree of Thoughts: Deliberate Problem Solving with Large Language Models.
-        arXiv preprint arXiv:2305.10601.
+        Yao et al. (v2; 2023) "Tree of Thoughts: Deliberate Problem Solving with Large Language Models".
+        https://arxiv.org/abs/2305.10601
     """
 
     class _Node:

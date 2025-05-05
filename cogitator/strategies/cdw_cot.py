@@ -25,13 +25,8 @@ class CDWCoT:
     prompts for the final context.
 
     Reference:
-        Wang, X., Wei, F., Schuurmans, D., Le, Q., Chi, E., Narang, S., Mirhoseini, A., & Zhou, D.
-        (2023). Self-Consistency Improves Chain of Thought Reasoning in Language Models.
-        In International Conference on Learning Representations (ICLR).
-        (Note: The reference describes Self-Consistency, but CDW-CoT builds upon similar
-         ideas of generating multiple paths and combining them, adapted here for prompt selection).
-        (Actual CDW-CoT reference might be missing, this implementation follows the pattern
-         described in related prompt optimization literature).
+        Fang et al. (2025). "CDW-CoT: Clustered Distance-Weighted Chain-of-Thoughts Reasoning",
+        https://arxiv.org/abs/2501.12226
     """
 
     def __init__(

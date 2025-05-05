@@ -479,9 +479,8 @@ class GraphOfThoughts:
     and selection according to a defined Graph of Operations (GoO).
 
     Reference:
-        Besta, M., Blach, N., Kubik, A., et al. (2023).
-        Graph of Thoughts: Solving Elaborate Problems with Large Language Models.
-        arXiv preprint arXiv:2308.09687.
+        Besta et al. (v4; 2024) "Graph of Thoughts: Solving Elaborate Problems with Large Language Models".
+        https://arxiv.org/abs/2308.09687
     """
 
     def __init__(
