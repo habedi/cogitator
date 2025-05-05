@@ -27,33 +27,33 @@ class LeastToMost:
     """
 
     def __init__(
-            self,
-            llm: BaseLLM,
-            few_shot_examples: Optional[List[Tuple[str, List[str]]]] = None,
-            *,
-            intermediate_output_format: Literal["text", "json"] = "text",
-            decompose_prompt_template: str = (
-                    "Decompose the main question into a sequence of simpler subquestions "
-                    "that must be answered sequentially to solve the main question. "
-                    "Return the result as a JSON object with a single key 'subquestions' containing a list of strings.\n\n"
-                    "Main Question: {question}\n\n"
-                    "JSON Output:"
-            ),
-            solve_prompt_template: str = (
-                    "Previous Context:\n{context}\n\n"
-                    "Current Subquestion: {subquestion}\n\n"
-                    "Answer the current subquestion using the context if necessary. "
-                    "Provide only the answer to the subquestion.\nAnswer:"
-            ),
-            final_answer_prompt_template: str = (
-                    "Based on the following sequential subquestions and their answers, "
-                    "answer the original main question.\n\n"
-                    "Subquestions and Answers:\n{solved_steps}\n"
-                    "Original Main Question: {question}\n\nFinal Answer:"
-            ),
-            max_subqs: int = 10,
-            max_tokens: Optional[int] = None,
-            seed: Optional[int] = None,
+        self,
+        llm: BaseLLM,
+        few_shot_examples: Optional[List[Tuple[str, List[str]]]] = None,
+        *,
+        intermediate_output_format: Literal["text", "json"] = "text",
+        decompose_prompt_template: str = (
+            "Decompose the main question into a sequence of simpler subquestions "
+            "that must be answered sequentially to solve the main question. "
+            "Return the result as a JSON object with a single key 'subquestions' containing a list of strings.\n\n"
+            "Main Question: {question}\n\n"
+            "JSON Output:"
+        ),
+        solve_prompt_template: str = (
+            "Previous Context:\n{context}\n\n"
+            "Current Subquestion: {subquestion}\n\n"
+            "Answer the current subquestion using the context if necessary. "
+            "Provide only the answer to the subquestion.\nAnswer:"
+        ),
+        final_answer_prompt_template: str = (
+            "Based on the following sequential subquestions and their answers, "
+            "answer the original main question.\n\n"
+            "Subquestions and Answers:\n{solved_steps}\n"
+            "Original Main Question: {question}\n\nFinal Answer:"
+        ),
+        max_subqs: int = 10,
+        max_tokens: Optional[int] = None,
+        seed: Optional[int] = None,
     ) -> None:
         """Initializes the LeastToMost strategy handler.
 
@@ -163,7 +163,7 @@ class LeastToMost:
         return subs[: self.max_subqs]
 
     async def decompose_async(
-            self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
+        self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
     ) -> List[str]:
         """Asynchronously decomposes a complex question into simpler subquestions.
 
@@ -256,8 +256,8 @@ class LeastToMost:
                 }
                 if self.intermediate_output_format == "json":
                     json_p = (
-                            prompt
-                            + '\n\nReturn exactly one JSON object with key "final_answer" whose value is the answer.\n\nJSON Answer:'
+                        prompt
+                        + '\n\nReturn exactly one JSON object with key "final_answer" whose value is the answer.\n\nJSON Answer:'
                     )
                     parsed = self.llm.generate_json(
                         json_p, response_model=ExtractedAnswer, **gen_args
@@ -274,11 +274,11 @@ class LeastToMost:
         return solved
 
     async def solve_async(
-            self,
-            question: str,
-            subqs: List[str],
-            semaphore: Optional[asyncio.Semaphore] = None,
-            **kwargs: Any,
+        self,
+        question: str,
+        subqs: List[str],
+        semaphore: Optional[asyncio.Semaphore] = None,
+        **kwargs: Any,
     ) -> List[Tuple[str, str]]:
         """Asynchronously and sequentially solves the subquestions using the LLM.
 
@@ -309,8 +309,8 @@ class LeastToMost:
                 }
                 if self.intermediate_output_format == "json":
                     json_p = (
-                            prompt
-                            + '\n\nReturn exactly one JSON object with key "final_answer" whose value is the answer.\n\nJSON Answer:'
+                        prompt
+                        + '\n\nReturn exactly one JSON object with key "final_answer" whose value is the answer.\n\nJSON Answer:'
                     )
                     gen_args["response_model"] = ExtractedAnswer
                     if semaphore:
@@ -339,7 +339,7 @@ class LeastToMost:
             idx, sqr, ansr = await one(i, sq, current_context)
             solved.append((sqr, ansr))
             current_context = (
-                    "Previously solved:\n" + "\n".join(f"Q: {q}\nA: {a}" for q, a in solved) + "\n"
+                "Previously solved:\n" + "\n".join(f"Q: {q}\nA: {a}" for q, a in solved) + "\n"
             )
 
         return solved
@@ -374,8 +374,8 @@ class LeastToMost:
             }
             if self.intermediate_output_format == "json":
                 json_p = (
-                        prompt
-                        + '\n\nReturn exactly one JSON object with key "final_answer" whose value is the answer.\n\nJSON Answer:'
+                    prompt
+                    + '\n\nReturn exactly one JSON object with key "final_answer" whose value is the answer.\n\nJSON Answer:'
                 )
                 parsed = self.llm.generate_json(json_p, response_model=ExtractedAnswer, **gen_args)
                 final_answer = str(parsed.final_answer).strip()
@@ -390,7 +390,7 @@ class LeastToMost:
         return final_answer
 
     async def run_async(
-            self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
+        self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
     ) -> str:
         """Asynchronously executes the full Least-to-Most process for a question.
 
@@ -422,8 +422,8 @@ class LeastToMost:
             }
             if self.intermediate_output_format == "json":
                 json_p = (
-                        prompt
-                        + '\n\nReturn exactly one JSON object with key "final_answer" whose value is the answer.\n\nJSON Answer:'
+                    prompt
+                    + '\n\nReturn exactly one JSON object with key "final_answer" whose value is the answer.\n\nJSON Answer:'
                 )
                 gen_args["response_model"] = ExtractedAnswer
                 if semaphore:

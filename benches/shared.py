@@ -199,9 +199,11 @@ class Datasets:
                     logger.warning(
                         f"Skipping incomplete item in commonsense_qa: {item.get('id', 'N/A')}")
                     continue
+
                 choices_str = ' '.join(
                     [f'({chr(ord("A") + i)}) {c}' for i, c in enumerate(choices)])
                 question_with_choices = f"{question_text}\nChoices: {choices_str}"
+
                 qs.append(question_with_choices)
                 idx = ord(answer_key) - ord("A")
                 if 0 <= idx < len(choices):
@@ -630,7 +632,7 @@ def add_generation_args(parser: argparse.ArgumentParser):
     parser.add_argument("--provider", choices=["openai", "ollama"], default=DEFAULT_PROVIDER,
                         help=f"LLM provider for generation (overrides config, default: {DEFAULT_PROVIDER})")
     parser.add_argument("--model-name", default=None,
-                        help="Generation model name (overrides config, default depends on provider)")
+                        help="Generation model name (overrides config, default: gemma3:4b for ollama, gpt-4o-mini for openai)")
     parser.add_argument("--use-async", action='store_true', default=False,
                         help="Run generation asynchronously (overrides config)")
     parser.add_argument("--concurrency", type=int, default=DEFAULT_CONCURRENCY,
@@ -650,7 +652,7 @@ def add_evaluation_args(parser: argparse.ArgumentParser):
     parser.add_argument("--provider", choices=["openai", "ollama"], default=DEFAULT_PROVIDER,
                         help=f"LLM provider for LLM-based extraction (overrides config, default: {DEFAULT_PROVIDER})")
     parser.add_argument("--model-name", default=None,
-                        help="Model name for LLM-based extraction (overrides config, default depends on provider)")
+                        help="Model name for LLM-based extraction (overrides config, default: gemma3:4b for ollama, gpt-4o-mini for openai)")
     parser.add_argument("--concurrency", type=int, default=DEFAULT_CONCURRENCY,
                         help=f"Max concurrent async requests for LLM extractor (overrides config, default: {DEFAULT_CONCURRENCY})")
     parser.add_argument("--show-details", action='store_true', default=False,

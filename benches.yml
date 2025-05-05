@@ -7,7 +7,7 @@ generation:
   cutoff: 50
   provider: "ollama"
   model_name: "gemma3:4b"
-  ollama_host: null # Or Ollama host:port; only relevant if provider is "ollama"
+  ollama_host: null
   use_async: true
   concurrency: 3
   use_json_strategies: false
@@ -20,18 +20,18 @@ generation:
 evaluation:
   input_file: "benchmark_results.jsonl"
   extractor:
-    type: "heuristic" # Can be "llm"
-    provider: "ollama" # Only relevant if type is "llm"
-    model_name: "gemma3:4b" # Only relevant if type is "llm"
-    ollama_host: "0.0.0.0:11434" # Or null; only relevant if type is "llm"
-    llm_params: # Only relevant if type is "llm"
+    type: "heuristic"
+    provider: "ollama"
+    model_name: "gemma3:12b"
+    ollama_host: null
+    llm_params:
       max_tokens: 64
       seed: 42
       temperature: 0.1
   show_details: false
-  concurrency: 3 # Concurrency for LLM extractor if used
+  concurrency: 3
 
-strategies: # CoT methods to benchmark
+strategies:
   ZeroShotCoT:
     enabled: true
 
@@ -60,13 +60,13 @@ strategies: # CoT methods to benchmark
     enabled: true
     n_samples: 10
     temperature: 0.8
-    stop: [ "\n\n" ]
-    internal_extraction_format: "json" # or "heuristic"
+    stop: null
+    internal_extraction_format: "heuristic"
 
   LeastToMost:
     enabled: true
     max_subqs: 10
-    intermediate_output_format: "json" # or "text"
+    intermediate_output_format: "text"
 
   TreeOfThoughts:
     enabled: true
@@ -77,8 +77,11 @@ strategies: # CoT methods to benchmark
 
   GraphOfThoughts:
     enabled: true
-    max_iters: 5
-    num_branches: 3
-    beam_width: 5
-    merge_threshold: 0.9
-    final_answer_format: "text" # or "json"
+    graph_of_operations:
+      - [ "Generate", { k: 3, target_set: "frontier", output_set: "generated_1", prompt_key: "expand" } ]
+      - [ "Score", { target_set: "generated_1", prompt_key: "evaluate" } ]
+      - [ "KeepBest", { N: 1, target_set: "generated_1", output_set: "frontier" } ]
+      - [ "Generate", { k: 2, target_set: "frontier", output_set: "generated_2", prompt_key: "expand" } ]
+      - [ "Score", { target_set: "generated_2", prompt_key: "evaluate" } ]
+      - [ "KeepBest", { N: 1, target_set: "generated_2", output_set: "frontier" } ]
+    final_answer_format: "text"

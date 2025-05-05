@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import argparse
 import asyncio
 import json
@@ -123,16 +122,42 @@ def get_methods_to_run(
         if _is_strategy_enabled(config, name) and instance:
             strategy_cfg = _get_strategy_config(config, name)
             run_kwargs = global_llm_params.copy()
+            wrapped_run_method: Optional[Callable] = None
+
             if name == "SelfConsistency":
                 sc_temp = strategy_cfg.get('temperature')
                 if sc_temp is not None: run_kwargs['temperature'] = sc_temp
                 sc_stop = strategy_cfg.get('stop')
                 if sc_stop is not None: run_kwargs['stop'] = sc_stop
+                run_method_base = instance.run_async if use_async else instance.run
+                wrapped_run_method = lambda q, rk=run_kwargs: run_method_base(q, **rk)
 
-            run_method_base = instance.run_async if use_async else instance.run
-            wrapped_run_method = lambda q, rk=run_kwargs: run_method_base(q, **rk)
-            methods.append((name, wrapped_run_method))
-            logger.debug(f"{name} is enabled.")
+            elif name == "GraphOfThoughts":
+                goo_list = strategy_cfg.get('graph_of_operations')
+                if not goo_list or not isinstance(goo_list, list):
+                    logger.error(
+                        f"GraphOfThoughts strategy enabled but 'graph_of_operations'"
+                        f" is missing or invalid in config. Skipping.")
+                    wrapped_run_method = None
+                else:
+                    logger.info(f"GraphOfThoughts configured with GoO: {goo_list}")
+                    if use_async:
+                        run_method_base = instance.run_async
+                        wrapped_run_method = lambda q, goo=goo_list, \
+                                                    rk=run_kwargs: run_method_base(q,
+                                                                                   graph_of_operations=goo,
+                                                                                   **rk)
+                    else:
+                        logger.warning(
+                            "GraphOfThoughts sync run is not supported, skipping sync execution.")
+                        wrapped_run_method = None
+            else:
+                run_method_base = instance.run_async if use_async else instance.run
+                wrapped_run_method = lambda q, rk=run_kwargs: run_method_base(q, **rk)
+
+            if wrapped_run_method is not None:
+                methods.append((name, wrapped_run_method))
+                logger.debug(f"{name} is enabled.")
         else:
             logger.info(
                 f"Skipping strategy '{name}' as it is disabled in config or instance is missing.")
@@ -140,8 +165,8 @@ def get_methods_to_run(
     return methods
 
 
-async def run_single_async(q: str, model_func: Callable, semaphore: asyncio.Semaphore) -> Tuple[
-    str, float]:
+async def run_single_async(q: str, model_func: Callable, semaphore: asyncio.Semaphore) \
+    -> Tuple[str, float]:
     t0 = time.time()
     raw_output = "[ERROR]"
     try:
@@ -238,6 +263,8 @@ async def main():
         if sc_extraction_format is None:
             sc_extraction_format = "json" if config['use_json_strategies'] else "heuristic"
         params['internal_extraction_format'] = sc_extraction_format
+        params['seed'] = global_seed
+        params['max_tokens'] = global_max_tokens
         instances["SelfConsistency"] = SelfConsistency(llm, **params)
         logger.info(f"Initialized SelfConsistency with params: {params}")
 
@@ -276,7 +303,6 @@ async def main():
 
         instances["GraphOfThoughts"] = GraphOfThoughts(
             llm,
-            # embedder=cfg.get("embeddings_model"),
             max_tokens=global_max_tokens,
             seed=global_seed,
             **params
