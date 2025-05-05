@@ -158,10 +158,12 @@ poetry run python benches/evaluate.py --input-file my_openai_results.jsonl --ext
 ## Performance Metric
 
 Accuracy is the primary metric reported by the `evaluate.py` script.
-It is defined as the percentage of correctly answered questions out of the total number of successfully extracted answers for a given CoT strategy.
+It is defined as the percentage of correctly answered questions out of the total number of successfully extracted answers for a
+given CoT strategy.
 
 > [!NOTE]
-> If there are extraction errors (e.g., the extractor fails to extract an answer), those questions are excluded from the accuracy calculation.
+> If there are extraction errors (e.g., the extractor fails to extract an answer), those questions are excluded from the accuracy
+> calculation.
 > This may make it harder to objectively compare different strategies if there are failures in the extraction process.
 
 ## Datasets

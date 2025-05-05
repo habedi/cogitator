@@ -18,13 +18,13 @@ class OllamaLLM(BaseLLM):
     """
 
     def __init__(
-        self,
-        model: str = "gemma3:4b",
-        temperature: float = 0.7,
-        max_tokens: int = 1024,
-        stop: Optional[List[str]] = None,
-        seed: Optional[int] = 33,
-        ollama_host: Optional[str] = None,
+            self,
+            model: str = "gemma3:4b",
+            temperature: float = 0.7,
+            max_tokens: int = 1024,
+            stop: Optional[List[str]] = None,
+            seed: Optional[int] = 33,
+            ollama_host: Optional[str] = None,
     ) -> None:
         """Initializes the OllamaLLM provider.
 
@@ -149,7 +149,7 @@ class OllamaLLM(BaseLLM):
             raise RuntimeError(f"Ollama async generate failed: {e}") from e
 
     def _make_response_options_and_schema(
-        self, kwargs: Any, response_model: Type[BaseModel]
+            self, kwargs: Any, response_model: Type[BaseModel]
     ) -> Tuple[dict[str, Any], dict[str, Any]]:
         """Prepares options and JSON schema for structured output requests.
 
@@ -176,7 +176,7 @@ class OllamaLLM(BaseLLM):
         return {k: v for k, v in opts.items() if v is not None}, schema
 
     def _generate_json_internal(
-        self, prompt: str, response_model: Type[BaseModel], **kwargs: Any
+            self, prompt: str, response_model: Type[BaseModel], **kwargs: Any
     ) -> Tuple[str, Optional[str]]:
         """Internal method for Ollama JSON generation using the 'format' parameter.
 
@@ -220,7 +220,7 @@ class OllamaLLM(BaseLLM):
             raise RuntimeError(f"Ollama JSON generation failed: {e}") from e
 
     async def _generate_json_internal_async(
-        self, prompt: str, response_model: Type[BaseModel], **kwargs: Any
+            self, prompt: str, response_model: Type[BaseModel], **kwargs: Any
     ) -> Tuple[str, Optional[str]]:
         """Asynchronous internal method for Ollama JSON generation.
 

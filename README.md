@@ -35,7 +35,7 @@ applications.
 ### Features
 
 * Provides unified sync/async API for CoT strategies
-* Supports using OpenAI and Ollama as LLM providers 
+* Supports using OpenAI and Ollama as LLM providers
 * Easy to extend and add new LLM providers and CoT strategies
 * Supports structured model output with Pydantic validation
 * Includes a customizable benchmarking framework (see [benches](benches))
@@ -135,6 +135,25 @@ Check out the [benches](benches) directory for more details about the framework 
 ### Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to make a contribution.
+
+### Citations
+
+If you find this project useful, please give it a star!
+If you have any questions or feedback, please use the discussion section of the repository or open an issue.
+If you use this project in your research, please consider citing using the following information:
+
+```bibtex
+@software{abedi_cogitator_2025,
+    author = {Abedi Firouzjaei, Hassan},
+    title = {{Cogitator: A Python toolkit for chain-of-thought prompting}},
+    month = may,
+    year = 2025,
+    publisher = {Zenodo},
+    version = {0.1.0b1},
+    doi = {10.5281/zenodo.15331821},
+    url = {https://github.com/habedi/cogitator}
+}
+```
 
 ### Logo
 

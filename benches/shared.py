@@ -75,7 +75,7 @@ class Datasets:
 
     @staticmethod
     def _load_and_combine_splits(
-            dataset_hf_path: str, config_name: Optional[str], available_splits: List[str]
+        dataset_hf_path: str, config_name: Optional[str], available_splits: List[str]
     ) -> Dataset:
         loaded_splits = []
         splits_to_try = [s for s in available_splits if s in ["train", "test"]]
@@ -196,10 +196,12 @@ class Datasets:
                 choices = item["choices"]["text"]
                 answer_key = item["answerKey"]
                 if not question_text or not choices or not answer_key or len(choices) < 1:
-                    logger.warning(f"Skipping incomplete item in commonsense_qa: {item.get('id', 'N/A')}")
+                    logger.warning(
+                        f"Skipping incomplete item in commonsense_qa: {item.get('id', 'N/A')}")
                     continue
                 # --- Start FIX ---
-                choices_str = ' '.join([f'({chr(ord("A") + i)}) {c}' for i, c in enumerate(choices)])
+                choices_str = ' '.join(
+                    [f'({chr(ord("A") + i)}) {c}' for i, c in enumerate(choices)])
                 question_with_choices = f"{question_text}\nChoices: {choices_str}"
                 # --- End FIX ---
                 qs.append(question_with_choices)
@@ -242,12 +244,12 @@ class Datasets:
 
 
 def get_llm(
-        provider: str,
-        model_name: Optional[str] = None,
-        openai_key: Optional[str] = None,
-        ollama_host: Optional[str] = None,
-        is_extractor: bool = False,
-        llm_params: Optional[Dict[str, Any]] = None
+    provider: str,
+    model_name: Optional[str] = None,
+    openai_key: Optional[str] = None,
+    ollama_host: Optional[str] = None,
+    is_extractor: bool = False,
+    llm_params: Optional[Dict[str, Any]] = None
 ) -> BaseLLM:
     role = "Extractor" if is_extractor else "Primary"
     if model_name is None:
@@ -270,7 +272,8 @@ def get_llm(
         if not openai_key:
             openai_key = os.getenv(DEFAULT_OPENAI_ENV_VAR)
             if not openai_key:
-                raise ValueError("OpenAI provider selected but no API key found in args or env var.")
+                raise ValueError(
+                    "OpenAI provider selected but no API key found in args or env var.")
         return OpenAILLM(api_key=openai_key, model=model_name, **base_llm_params)
     elif provider == "ollama":
         return OllamaLLM(model=model_name, ollama_host=ollama_host, **base_llm_params)
@@ -296,7 +299,8 @@ def extract_final_answer(raw_output: str) -> str:
             match = re.search(pattern, last_line, re.IGNORECASE)
             if match:
                 ans = match.group(1).upper()
-                logger.debug(f"Extracted MCQ answer '{ans}' from last line using pattern: '{pattern}'")
+                logger.debug(
+                    f"Extracted MCQ answer '{ans}' from last line using pattern: '{pattern}'")
                 return ans
         if re.fullmatch(r'[A-Ea-e]', last_line):
             ans = last_line.upper()
@@ -331,8 +335,10 @@ def extract_final_answer(raw_output: str) -> str:
         last_num_str = numbers[-1].replace(",", "")
         if lines:
             last_line = lines[-1].strip()
-            if re.fullmatch(r'.*?(' + re.escape(last_num_str) + r')\s*\.?\s*', last_line, re.IGNORECASE):
-                logger.debug(f"Extracted numerical answer '{last_num_str}' from last line direct match.")
+            if re.fullmatch(r'.*?(' + re.escape(last_num_str) + r')\s*\.?\s*', last_line,
+                            re.IGNORECASE):
+                logger.debug(
+                    f"Extracted numerical answer '{last_num_str}' from last line direct match.")
                 try:
                     f_val = float(last_num_str)
                     if f_val.is_integer():
@@ -340,9 +346,11 @@ def extract_final_answer(raw_output: str) -> str:
                 except ValueError:
                     pass
                 return last_num_str
-            if re.search(r'\b(?:is|answer|equals)\s+(' + re.escape(last_num_str) + r')\s*\.?\s*$', last_line,
+            if re.search(r'\b(?:is|answer|equals)\s+(' + re.escape(last_num_str) + r')\s*\.?\s*$',
+                         last_line,
                          re.IGNORECASE):
-                logger.debug(f"Extracted numerical answer '{last_num_str}' from last line phrasing.")
+                logger.debug(
+                    f"Extracted numerical answer '{last_num_str}' from last line phrasing.")
                 try:
                     f_val = float(last_num_str)
                     if f_val.is_integer():
@@ -368,7 +376,8 @@ def extract_final_answer(raw_output: str) -> str:
         if last_line_content and len(last_line_content) < 20:
             logger.debug(f"Falling back to short last line content: '{last_line_content}'")
             return last_line_content
-    logger.warning(f"Could not extract a definitive answer heuristically from: '{text[:150]}...' Returning error.")
+    logger.warning(
+        f"Could not extract a definitive answer heuristically from: '{text[:150]}...' Returning error.")
     return "[EXTRACTION_HEURISTIC_FAILURE]"
 
 
@@ -393,7 +402,7 @@ JSON Output:
 
 
 def extract_final_answer_by_llm(
-        raw_output: str, llm: BaseLLM, question: str, **kwargs
+    raw_output: str, llm: BaseLLM, question: str, **kwargs
 ) -> str:
     if not raw_output or raw_output == "[ERROR]" or raw_output.startswith("[ERROR:"):
         logger.warning("Skipping LLM extraction for input marked as error.")
@@ -416,7 +425,8 @@ def extract_final_answer_by_llm(
                 return extracted.upper()
             return extracted
         else:
-            logger.warning(f"LLM extraction returned null or invalid object for output: {raw_output[:100]}...")
+            logger.warning(
+                f"LLM extraction returned null or invalid object for output: {raw_output[:100]}...")
             return "[EXTRACTION_NULL]"
     except Exception as e:
         logger.error(f"LLM extraction failed: {e}", exc_info=True)
@@ -424,7 +434,7 @@ def extract_final_answer_by_llm(
 
 
 async def extract_final_answer_by_llm_async(
-        raw_output: str, llm: BaseLLM, question: str, **kwargs
+    raw_output: str, llm: BaseLLM, question: str, **kwargs
 ) -> str:
     if not raw_output or raw_output == "[ERROR]" or raw_output.startswith("[ERROR:"):
         logger.warning("Skipping async LLM extraction for input marked as error.")
@@ -453,7 +463,8 @@ async def extract_final_answer_by_llm_async(
                 return extracted.upper()
             return extracted
         else:
-            logger.warning(f"Async LLM extraction returned null or invalid object for output: {raw_output[:100]}...")
+            logger.warning(
+                f"Async LLM extraction returned null or invalid object for output: {raw_output[:100]}...")
             return "[EXTRACTION_NULL]"
     except Exception as e:
         logger.error(f"Async LLM extraction failed: {e}", exc_info=True)
@@ -461,8 +472,8 @@ async def extract_final_answer_by_llm_async(
 
 
 def log_single_result(
-        show_details: bool, idx: int, name: str, mode: str, question: str, gold: str,
-        raw_pred: str, extracted_pred: str, time_taken: float, is_correct: bool
+    show_details: bool, idx: int, name: str, mode: str, question: str, gold: str,
+    raw_pred: str, extracted_pred: str, time_taken: float, is_correct: bool
 ):
     if not show_details:
         return
@@ -477,10 +488,10 @@ def log_single_result(
 
 
 def load_and_merge_config(
-        args: argparse.Namespace,
-        parser_definition: argparse.ArgumentParser,
-        config_path: str = DEFAULT_BENCH_CONFIG_PATH,
-        config_section: str = "generation"
+    args: argparse.Namespace,
+    parser_definition: argparse.ArgumentParser,
+    config_path: str = DEFAULT_BENCH_CONFIG_PATH,
+    config_section: str = "generation"
 ) -> Dict[str, Any]:
     config = {}
     try:
@@ -494,7 +505,8 @@ def load_and_merge_config(
     except FileNotFoundError:
         logger.info(f"{config_path} not found. Using command-line arguments and defaults.")
     except yaml.YAMLError as e:
-        logger.warning(f"Error parsing {config_path}: {e}. Using command-line arguments and defaults.")
+        logger.warning(
+            f"Error parsing {config_path}: {e}. Using command-line arguments and defaults.")
 
     final_config = {}
     common_config = config.get("common", {})
@@ -536,8 +548,10 @@ def load_and_merge_config(
             logger.debug(f"Using default value for '{arg_name}': {default_value}")
             return default_value
 
-    final_config['debug'] = getattr(args, 'debug', False) if 'debug' in cli_set_args else common_config.get('debug',
-                                                                                                            False)
+    final_config['debug'] = getattr(args, 'debug',
+                                    False) if 'debug' in cli_set_args else common_config.get(
+        'debug',
+        False)
     final_config['openai_key_env_var'] = get_value('openai_key_env_var', DEFAULT_OPENAI_ENV_VAR,
                                                    cli_arg_name='openai_key_env_var')
 
@@ -548,13 +562,16 @@ def load_and_merge_config(
         final_config['model_name'] = get_value('model_name', None, cli_arg_name='model_name')
         final_config['ollama_host'] = get_value('ollama_host', None)
         final_config['use_async'] = getattr(args, 'use_async',
-                                            False) if 'use_async' in cli_set_args else section_config.get('use_async',
-                                                                                                          False)
-        final_config['concurrency'] = get_value('concurrency', DEFAULT_CONCURRENCY, cli_arg_name='concurrency')
+                                            False) if 'use_async' in cli_set_args else section_config.get(
+            'use_async',
+            False)
+        final_config['concurrency'] = get_value('concurrency', DEFAULT_CONCURRENCY,
+                                                cli_arg_name='concurrency')
         final_config['use_json_strategies'] = getattr(args, 'use_json_strategies',
                                                       False) if 'use_json_strategies' in cli_set_args else section_config.get(
             'use_json_strategies', False)
-        final_config['output_file'] = get_value('output_file', DEFAULT_OUTPUT_FILE, cli_arg_name='output_file')
+        final_config['output_file'] = get_value('output_file', DEFAULT_OUTPUT_FILE,
+                                                cli_arg_name='output_file')
         final_config['llm_params'] = section_config.get('llm_params', {})
 
     elif config_section == "evaluation":
@@ -589,7 +606,8 @@ def load_and_merge_config(
         )
         final_config['extractor_llm_params'] = extractor_yaml_config.get('llm_params', {})
 
-        final_config['concurrency'] = get_value('concurrency', DEFAULT_CONCURRENCY, cli_arg_name='concurrency')
+        final_config['concurrency'] = get_value('concurrency', DEFAULT_CONCURRENCY,
+                                                cli_arg_name='concurrency')
         final_config['show_details'] = getattr(args, 'show_details',
                                                False) if 'show_details' in cli_set_args else section_config.get(
             'show_details', False)
@@ -599,12 +617,15 @@ def load_and_merge_config(
 
 
 def add_common_args(parser: argparse.ArgumentParser):
-    parser.add_argument("--openai-key", default=None, help="OpenAI API key (overrides config/env var)")
-    parser.add_argument("--debug", action="store_true", default=False, help="Enable debug logging (overrides config).")
+    parser.add_argument("--openai-key", default=None,
+                        help="OpenAI API key (overrides config/env var)")
+    parser.add_argument("--debug", action="store_true", default=False,
+                        help="Enable debug logging (overrides config).")
 
 
 def add_generation_args(parser: argparse.ArgumentParser):
-    parser.add_argument("--dataset", default=DEFAULT_DATASET, choices=list(Datasets.registry.keys()),
+    parser.add_argument("--dataset", default=DEFAULT_DATASET,
+                        choices=list(Datasets.registry.keys()),
                         help=f"Dataset name (overrides config, default: {DEFAULT_DATASET})")
     parser.add_argument("--cutoff", type=int, default=DEFAULT_CUTOFF,
                         help=f"Number of samples (-1 for all, overrides config, default: {DEFAULT_CUTOFF})")
@@ -625,7 +646,8 @@ def add_generation_args(parser: argparse.ArgumentParser):
 def add_evaluation_args(parser: argparse.ArgumentParser):
     parser.add_argument("--input-file", default=None,
                         help="Path to the JSONL file with generation results (overrides config default)")
-    parser.add_argument("--extractor-type", choices=["heuristic", "llm"], default=DEFAULT_EXTRACTOR_TYPE,
+    parser.add_argument("--extractor-type", choices=["heuristic", "llm"],
+                        default=DEFAULT_EXTRACTOR_TYPE,
                         help=f"Extractor type (overrides config, default: {DEFAULT_EXTRACTOR_TYPE})")
     parser.add_argument("--provider", choices=["openai", "ollama"], default=DEFAULT_PROVIDER,
                         help=f"LLM provider for LLM-based extraction (overrides config, default: {DEFAULT_PROVIDER})")
@@ -650,12 +672,14 @@ def show_dataset_samples(ds_name: str, num_samples: int = 5):
     try:
         ds = Datasets._load_and_combine_splits(hf_path, config_name, available_splits)
     except Exception as e:
-        logger_samples.error(f"Failed to load dataset '{ds_name}' (Path: {hf_path}): {e}", exc_info=True)
+        logger_samples.error(f"Failed to load dataset '{ds_name}' (Path: {hf_path}): {e}",
+                             exc_info=True)
         return
     if ds is None:
         logger_samples.error(f"Dataset object for '{ds_name}' is None after loading attempt.")
         return
-    print(f"\n--- First {num_samples} Samples for Dataset: {ds_name} (Path: {hf_path}, Combined Splits) ---")
+    print(
+        f"\n--- First {num_samples} Samples for Dataset: {ds_name} (Path: {hf_path}, Combined Splits) ---")
     print(f"Total rows loaded: {len(ds)}")
     try:
         actual_samples = min(num_samples, len(ds))
@@ -678,7 +702,8 @@ def show_dataset_samples(ds_name: str, num_samples: int = 5):
                 print(f"  {col_name}: {truncated_value}")
             print("-" * 80)
     except Exception as e:
-        logger_samples.error(f"Failed to process or display samples for dataset '{ds_name}': {e}", exc_info=True)
+        logger_samples.error(f"Failed to process or display samples for dataset '{ds_name}': {e}",
+                             exc_info=True)
 
 
 if __name__ == "__main__":

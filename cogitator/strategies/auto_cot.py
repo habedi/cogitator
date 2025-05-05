@@ -27,18 +27,18 @@ class AutoCoT:
     """
 
     def __init__(
-        self,
-        llm: BaseLLM,
-        n_demos: int = 8,
-        max_q_tokens: int = 60,
-        max_steps: int = 5,
-        *,
-        prompt_template: str = "Let's think step by step.",
-        max_retries: int = 2,
-        max_tokens: Optional[int] = None,
-        rand_seed: Optional[int] = None,
-        embedder: Optional[BaseEmbedder] = None,
-        clusterer: Optional[BaseClusterer] = None,
+            self,
+            llm: BaseLLM,
+            n_demos: int = 8,
+            max_q_tokens: int = 60,
+            max_steps: int = 5,
+            *,
+            prompt_template: str = "Let's think step by step.",
+            max_retries: int = 2,
+            max_tokens: Optional[int] = None,
+            rand_seed: Optional[int] = None,
+            embedder: Optional[BaseEmbedder] = None,
+            clusterer: Optional[BaseClusterer] = None,
     ) -> None:
         """Initializes the AutoCoT strategy handler.
 
@@ -157,7 +157,7 @@ class AutoCoT:
                     )
                     if attempt < self.max_retries:
                         # Optional: add a small delay before retrying
-                        time.sleep(0.5 * (2**attempt))
+                        time.sleep(0.5 * (2 ** attempt))
 
             if cot is None:
                 logger.error(
@@ -194,7 +194,7 @@ class AutoCoT:
         logger.info(f"AutoCoT fitting complete. Generated {len(demos)} demonstrations.")
 
     async def fit_async(
-        self, questions: List[str], semaphore: Optional[asyncio.Semaphore] = None
+            self, questions: List[str], semaphore: Optional[asyncio.Semaphore] = None
     ) -> None:
         """Asynchronously builds the demonstration pool using the Auto-CoT process.
 
@@ -268,7 +268,7 @@ class AutoCoT:
                         exc_info=(logger.getEffectiveLevel() <= logging.DEBUG),
                     )
                     if attempt < self.max_retries:
-                        await asyncio.sleep(0.5 * (2**attempt))
+                        await asyncio.sleep(0.5 * (2 ** attempt))
 
             logger.error(
                 "Failed to generate async demo for Q idx %d ('%s') after %d retries",

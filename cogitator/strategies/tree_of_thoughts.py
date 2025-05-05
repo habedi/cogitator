@@ -32,10 +32,10 @@ class TreeOfThoughts:
         __slots__ = ("children", "parent", "prior", "steps", "value_sum", "visits")
 
         def __init__(
-            self,
-            steps: List[str],
-            parent: Optional["TreeOfThoughts._Node"] = None,
-            prior: float = 1.0,
+                self,
+                steps: List[str],
+                parent: Optional["TreeOfThoughts._Node"] = None,
+                prior: float = 1.0,
         ) -> None:
             """Initializes a ToT node.
 
@@ -64,29 +64,29 @@ class TreeOfThoughts:
             return f"Node(steps={len(self.steps)}, val={self.value():.2f}, visits={self.visits})"
 
     def __init__(
-        self,
-        llm: BaseLLM,
-        max_depth: int = 3,
-        num_branches: int = 5,
-        sims: int = 16,
-        c_puct: float = 1.0,
-        expand_prompt: str = (
-            "Generate {k} distinct reasoning steps or thoughts to continue solving the problem, given the context below. "
-            "Return as a JSON object with a single key 'thoughts' containing a list of strings.\n\n"
-            "Context:\n{ctx}\n"
-            "Question: {question}\n\n"
-            "JSON Output:"
-        ),
-        eval_prompt: str = (
-            "Rate the quality of the reasoning steps below for solving the question on a scale of 1-10 "
-            '(1=bad, 10=excellent). Return response as a JSON object with keys "score" (int) and "justification" (str).\n\n'
-            "Question: {question}\n"
-            "Steps:\n{steps}\n\n"
-            "JSON Evaluation:"
-        ),
-        *,
-        max_tokens: Optional[int] = 256,
-        seed: Optional[int] = None,
+            self,
+            llm: BaseLLM,
+            max_depth: int = 3,
+            num_branches: int = 5,
+            sims: int = 16,
+            c_puct: float = 1.0,
+            expand_prompt: str = (
+                    "Generate {k} distinct reasoning steps or thoughts to continue solving the problem, given the context below. "
+                    "Return as a JSON object with a single key 'thoughts' containing a list of strings.\n\n"
+                    "Context:\n{ctx}\n"
+                    "Question: {question}\n\n"
+                    "JSON Output:"
+            ),
+            eval_prompt: str = (
+                    "Rate the quality of the reasoning steps below for solving the question on a scale of 1-10 "
+                    '(1=bad, 10=excellent). Return response as a JSON object with keys "score" (int) and "justification" (str).\n\n'
+                    "Question: {question}\n"
+                    "Steps:\n{steps}\n\n"
+                    "JSON Evaluation:"
+            ),
+            *,
+            max_tokens: Optional[int] = 256,
+            seed: Optional[int] = None,
     ) -> None:
         """Initializes the TreeOfThoughts strategy handler.
 
@@ -190,7 +190,7 @@ class TreeOfThoughts:
             node.children.append(child)
 
     async def _expand_async(
-        self, node: _Node, question: str, semaphore: Optional[asyncio.Semaphore], **kwargs: Any
+            self, node: _Node, question: str, semaphore: Optional[asyncio.Semaphore], **kwargs: Any
     ) -> None:
         """Asynchronously expands a leaf node.
 
@@ -269,7 +269,7 @@ class TreeOfThoughts:
         return 0.0
 
     async def _evaluate_async(
-        self, node: _Node, question: str, semaphore: Optional[asyncio.Semaphore], **kwargs: Any
+            self, node: _Node, question: str, semaphore: Optional[asyncio.Semaphore], **kwargs: Any
     ) -> float:
         """Asynchronously evaluates the reasoning path leading to a node.
 
@@ -386,7 +386,7 @@ class TreeOfThoughts:
             return "Error generating final answer."
 
     async def run_async(
-        self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
+            self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
     ) -> str:
         """Asynchronously executes the Tree of Thoughts search process using MCTS-like steps.
 

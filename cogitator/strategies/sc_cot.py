@@ -26,16 +26,16 @@ class SelfConsistency:
     """
 
     def __init__(
-        self,
-        llm: BaseLLM,
-        n_samples: int = 10,
-        temperature: float = 0.8,
-        max_tokens: int = 256,
-        stop: Optional[List[str]] = None,
-        internal_extraction_format: Literal["heuristic", "json"] = "heuristic",
-        answer_extraction_prompt: Optional[str] = None,
-        seed: Optional[int] = None,
-        **gen_kwargs: Any,
+            self,
+            llm: BaseLLM,
+            n_samples: int = 10,
+            temperature: float = 0.8,
+            max_tokens: int = 256,
+            stop: Optional[List[str]] = None,
+            internal_extraction_format: Literal["heuristic", "json"] = "heuristic",
+            answer_extraction_prompt: Optional[str] = None,
+            seed: Optional[int] = None,
+            **gen_kwargs: Any,
     ) -> None:
         """Initializes the SelfConsistency strategy handler.
 
@@ -64,10 +64,10 @@ class SelfConsistency:
 
         if self.internal_extraction_format == "json":
             self.answer_extraction_prompt = (
-                answer_extraction_prompt
-                or "Analyze the following reasoning chain and extract the final numerical or short answer. "
-                "Return the result as a JSON object with a single key 'final_answer' containing the answer as a string.\n\n"
-                "Reasoning Chain:\n{cot}\n\nJSON Answer:"
+                    answer_extraction_prompt
+                    or "Analyze the following reasoning chain and extract the final numerical or short answer. "
+                       "Return the result as a JSON object with a single key 'final_answer' containing the answer as a string.\n\n"
+                       "Reasoning Chain:\n{cot}\n\nJSON Answer:"
             )
         else:
             self.answer_extraction_prompt = None
@@ -283,7 +283,7 @@ class SelfConsistency:
             return ""
 
     async def run_async(
-        self, prompt: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
+            self, prompt: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
     ) -> str:
         """Asynchronously executes the Self-Consistency strategy.
 

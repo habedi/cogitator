@@ -83,7 +83,7 @@ class BaseLLM(ABC):
 
     @abstractmethod
     def _generate_json_internal(
-        self, prompt: str, response_model: Type[BaseModel], **kwargs: Any
+            self, prompt: str, response_model: Type[BaseModel], **kwargs: Any
     ) -> Tuple[str, Optional[str]]:
         """Internal method to generate raw JSON output string from the LLM.
 
@@ -109,7 +109,7 @@ class BaseLLM(ABC):
 
     @abstractmethod
     async def _generate_json_internal_async(
-        self, prompt: str, response_model: Type[BaseModel], **kwargs: Any
+            self, prompt: str, response_model: Type[BaseModel], **kwargs: Any
     ) -> Tuple[str, Optional[str]]:
         """Asynchronous internal method to generate raw JSON output string from the LLM.
 
@@ -177,7 +177,7 @@ class BaseLLM(ABC):
             last_bracket = text.rfind("]")
             end_index = max(last_brace, last_bracket)
             if end_index > start_index:
-                potential_json = text[start_index : end_index + 1]
+                potential_json = text[start_index: end_index + 1]
                 # Final check if this substring is valid JSON
                 try:
                     json.loads(potential_json)
@@ -189,7 +189,7 @@ class BaseLLM(ABC):
         return text
 
     def generate_json(
-        self, prompt: str, response_model: Type[BaseModel], retries: int = 2, **kwargs: Any
+            self, prompt: str, response_model: Type[BaseModel], retries: int = 2, **kwargs: Any
     ) -> BaseModel:
         """Generates a response and parses it into a Pydantic model instance.
 
@@ -252,7 +252,7 @@ class BaseLLM(ABC):
                 )
 
             if attempt < retries:
-                sleep_time = 2**attempt
+                sleep_time = 2 ** attempt
                 logger.info(f"Retrying JSON generation in {sleep_time} seconds...")
                 time.sleep(sleep_time)
 
@@ -261,7 +261,7 @@ class BaseLLM(ABC):
         )
 
     async def generate_json_async(
-        self, prompt: str, response_model: Type[BaseModel], retries: int = 2, **kwargs: Any
+            self, prompt: str, response_model: Type[BaseModel], retries: int = 2, **kwargs: Any
     ) -> BaseModel:
         """Asynchronously generates a response and parses it into a Pydantic model instance.
 
@@ -324,7 +324,7 @@ class BaseLLM(ABC):
                 )
 
             if attempt < retries:
-                sleep_time = 2**attempt
+                sleep_time = 2 ** attempt
                 logger.info(f"Retrying async JSON generation in {sleep_time} seconds...")
                 await asyncio.sleep(sleep_time)
 

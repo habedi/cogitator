@@ -263,15 +263,24 @@ async def main():
 
     if _is_strategy_enabled(config, "GraphOfThoughts"):
         cfg = _get_strategy_config(config, "GraphOfThoughts")
-        params = extract_init_params(cfg,
-                                     ["max_iters", "num_branches", "beam_width", "merge_threshold",
-                                      "expand_prompt", "eval_prompt"])
+        params = extract_init_params(cfg, ["final_answer_format", "prompts"])
+
         got_format = cfg.get("final_answer_format")
+
         if got_format is None:
-            got_format = "json" if config['use_json_strategies'] else "text"
+            got_format = "json" if config.get('use_json_strategies', False) else "text"
         params['final_answer_format'] = got_format
-        instances["GraphOfThoughts"] = GraphOfThoughts(llm, max_tokens=global_max_tokens,
-                                                       seed=global_seed, **params)
+
+        if "prompts" not in params and "prompts" in cfg:
+            params["prompts"] = cfg["prompts"]
+
+        instances["GraphOfThoughts"] = GraphOfThoughts(
+            llm,
+            # embedder=cfg.get("embeddings_model"),
+            max_tokens=global_max_tokens,
+            seed=global_seed,
+            **params
+        )
         logger.info(f"Initialized GraphOfThoughts with params: {params}")
 
     all_methods_to_run = get_methods_to_run(config, instances, llm)

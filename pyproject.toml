@@ -60,6 +60,7 @@ addopts = [
     "--cov-branch",
     "--cov-report=term",
     "--cov-report=xml",
+    "-rs",
 ]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"

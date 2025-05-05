@@ -35,19 +35,19 @@ class CDWCoT:
     """
 
     def __init__(
-        self,
-        llm: BaseLLM,
-        pool_size: int = 40,
-        n_clusters: int = 8,
-        lr: float = 0.1,
-        sample_size: int = 5,
-        *,
-        seed: Optional[int] = None,
-        max_tokens: Optional[int] = None,
-        max_grad_norm: float = 1.0,
-        init_pool_retries: int = 1,
-        embedder: Optional[BaseEmbedder] = None,
-        clusterer: Optional[BaseClusterer] = None,
+            self,
+            llm: BaseLLM,
+            pool_size: int = 40,
+            n_clusters: int = 8,
+            lr: float = 0.1,
+            sample_size: int = 5,
+            *,
+            seed: Optional[int] = None,
+            max_tokens: Optional[int] = None,
+            max_grad_norm: float = 1.0,
+            init_pool_retries: int = 1,
+            embedder: Optional[BaseEmbedder] = None,
+            clusterer: Optional[BaseClusterer] = None,
     ) -> None:
         """Initializes the CDWCoT strategy handler.
 
@@ -207,7 +207,7 @@ class CDWCoT:
                 except Exception as e:
                     logger.warning(f"Attempt {attempt + 1} failed for pool index {idx}: {e}")
                     if attempt < self.init_pool_retries:
-                        time.sleep(0.5 * 2**attempt)
+                        time.sleep(0.5 * 2 ** attempt)
                     else:
                         logger.error(
                             "Failed to generate CoT for pool index %d ('%s') after %d retries: %s",
@@ -234,11 +234,11 @@ class CDWCoT:
         )
 
     async def init_pool_async(
-        self,
-        questions: List[str],
-        answers: List[str],
-        semaphore: Optional[asyncio.Semaphore] = None,
-        **kwargs: Any,
+            self,
+            questions: List[str],
+            answers: List[str],
+            semaphore: Optional[asyncio.Semaphore] = None,
+            **kwargs: Any,
     ) -> None:
         """Asynchronously initializes the prompt pool.
 
@@ -298,7 +298,7 @@ class CDWCoT:
                 except Exception as e:
                     logger.warning(f"Async attempt {attempt + 1} failed for pool index {idx}: {e}")
                     if attempt < self.init_pool_retries:
-                        await asyncio.sleep(0.5 * 2**attempt)
+                        await asyncio.sleep(0.5 * 2 ** attempt)
                     else:
                         logger.error(
                             "Failed async CoT gen for pool index %d ('%s') after %d retries: %s",
@@ -354,7 +354,7 @@ class CDWCoT:
         )
 
     def train(
-        self, val_split: float = 0.2, epochs: int = 100, patience: int = 5, **kwargs: Any
+            self, val_split: float = 0.2, epochs: int = 100, patience: int = 5, **kwargs: Any
     ) -> None:
         """Trains the cluster-dependent prompt distributions.
 
@@ -520,12 +520,12 @@ class CDWCoT:
             logger.info(f"Finished training cluster {c}. Best Val Acc: {best_acc:.3f}")
 
     async def train_async(
-        self,
-        val_split: float = 0.2,
-        epochs: int = 100,
-        patience: int = 5,
-        semaphore: Optional[asyncio.Semaphore] = None,
-        **kwargs: Any,
+            self,
+            val_split: float = 0.2,
+            epochs: int = 100,
+            patience: int = 5,
+            semaphore: Optional[asyncio.Semaphore] = None,
+            **kwargs: Any,
     ) -> None:
         """Asynchronously trains the cluster-dependent prompt distributions.
 
@@ -580,10 +580,10 @@ class CDWCoT:
             )
 
             async def train_cluster(
-                cluster_index: int,
-                initial_p: np.ndarray,
-                train_indices: List[int],
-                val_indices: List[int],
+                    cluster_index: int,
+                    initial_p: np.ndarray,
+                    train_indices: List[int],
+                    val_indices: List[int],
             ) -> None:
                 p = initial_p.copy()
                 if not self._is_valid_distribution(p):
@@ -710,7 +710,7 @@ class CDWCoT:
         logger.info("Asynchronous CDW-CoT training complete for all clusters.")
 
     def _calculate_combined_distribution(
-        self, question: str, temperature: float = 0.3
+            self, question: str, temperature: float = 0.3
     ) -> np.ndarray:
         """Calculates the distance-weighted prompt selection distribution for a question.
 
@@ -742,9 +742,9 @@ class CDWCoT:
             raise RuntimeError("Prompt pool is empty. Cannot calculate distribution.")
 
         if (
-            self.cluster_centers is None
-            or not self.p_cluster
-            or len(self.p_cluster) != self.cluster_centers.shape[0]
+                self.cluster_centers is None
+                or not self.p_cluster
+                or len(self.p_cluster) != self.cluster_centers.shape[0]
         ):
             logger.warning(
                 "Cluster centers or probabilities not initialized correctly. Falling back to uniform distribution."
@@ -863,7 +863,7 @@ class CDWCoT:
         )
 
     async def run_async(
-        self, test_q: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
+            self, test_q: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
     ) -> str:
         """Asynchronously runs the CDW-CoT strategy for a given test question.
 

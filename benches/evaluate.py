@@ -32,10 +32,10 @@ logger = logging.getLogger("benchmark_evaluate")
 
 
 async def _run_llm_extraction_task(
-        llm_instance: BaseLLM,
-        semaphore: asyncio.Semaphore,
-        prompt: str,
-        args_dict: Dict[str, Any]
+    llm_instance: BaseLLM,
+    semaphore: asyncio.Semaphore,
+    prompt: str,
+    args_dict: Dict[str, Any]
 ) -> str:
     async with semaphore:
         try:
@@ -50,7 +50,8 @@ async def _run_llm_extraction_task(
                     return extracted.upper()
                 return extracted
             else:
-                logger.warning(f"Async LLM extraction returned null for prompt starting with: {prompt[:50]}...")
+                logger.warning(
+                    f"Async LLM extraction returned null for prompt starting with: {prompt[:50]}...")
                 return EXTRACTION_NULL_MARKER
         except Exception as async_err:
             logger.error(f"Async LLM extraction task failed: {async_err}", exc_info=False)
@@ -147,14 +148,16 @@ async def main():
                         record_indices_for_tasks.append(i)
 
                     except KeyError as e:
-                        logger.error(f"Skipping task creation for record {i + 1} due to missing key: {e}")
+                        logger.error(
+                            f"Skipping task creation for record {i + 1} due to missing key: {e}")
                     except Exception as e:
                         logger.error(f"Unexpected error preparing task for record {i + 1}: {e}")
 
                 if tasks_to_run:
                     logger.info(
                         f"Running {len(tasks_to_run)} async LLM extraction tasks with concurrency {eval_concurrency}...")
-                    llm_extraction_results = await asyncio.gather(*tasks_to_run, return_exceptions=True)
+                    llm_extraction_results = await asyncio.gather(*tasks_to_run,
+                                                                  return_exceptions=True)
                     logger.info("Async LLM extraction tasks complete.")
                     for task_idx, result in enumerate(llm_extraction_results):
                         record_idx = record_indices_for_tasks[task_idx]
@@ -190,9 +193,11 @@ async def main():
                                 if extracted_output in FAILURE_MARKERS:
                                     extraction_status = extracted_output
                             else:
-                                logger.warning(f"LLM result missing for record {i + 1}, using heuristic fallback.")
+                                logger.warning(
+                                    f"LLM result missing for record {i + 1}, using heuristic fallback.")
                                 try:
-                                    extracted_output = extract_answer_heuristic_custom(raw_output, dataset)
+                                    extracted_output = extract_answer_heuristic_custom(raw_output,
+                                                                                       dataset)
                                     if extracted_output == EXTRACTION_HEURISTIC_FAILURE_MARKER:
                                         extraction_status = EXTRACTION_HEURISTIC_FAILURE_MARKER
                                 except Exception:
@@ -207,7 +212,9 @@ async def main():
                             if extracted_output == EXTRACTION_HEURISTIC_FAILURE_MARKER:
                                 extraction_status = EXTRACTION_HEURISTIC_FAILURE_MARKER
                         except Exception as heuristic_err:
-                            logger.error(f"Heuristic extraction failed for Q{i + 1}: {heuristic_err}", exc_info=True)
+                            logger.error(
+                                f"Heuristic extraction failed for Q{i + 1}: {heuristic_err}",
+                                exc_info=True)
                             extracted_output = EXTRACTION_EXCEPTION_MARKER
                             extraction_status = EXTRACTION_EXCEPTION_MARKER
 
@@ -229,7 +236,8 @@ async def main():
                     processed_records += 1
 
                 except KeyError as e:
-                    logger.error(f"Skipping record {i + 1} due to missing key: {e} - Record: {record}")
+                    logger.error(
+                        f"Skipping record {i + 1} due to missing key: {e} - Record: {record}")
                 except Exception as e:
                     logger.error(f"Unexpected error processing record {i + 1}: {e}", exc_info=True)
 
