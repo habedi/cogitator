@@ -1,3 +1,5 @@
+"""Provides an LLM provider implementation for interacting with OpenAI models."""
+
 import asyncio
 import logging
 import time
@@ -14,6 +16,13 @@ logger = logging.getLogger(__name__)
 
 
 class OpenAILLM(BaseLLM):
+    """LLM provider implementation for OpenAI API models.
+
+    Handles interactions with models like GPT-4, GPT-4o, etc., supporting
+    standard generation, streaming, JSON mode, and structured outputs where available.
+    Includes retry logic for common API errors.
+    """
+
     _STRUCTURED_OUTPUT_SUPPORTING_MODELS = {
         "gpt-4o",
         "gpt-4o-mini",
@@ -22,12 +31,12 @@ class OpenAILLM(BaseLLM):
     }
 
     _JSON_MODE_SUPPORTING_MODELS = {
-                                       "gpt-4",
-                                       "gpt-4-turbo",
-                                       "gpt-4-turbo-preview",
-                                       "gpt-3.5-turbo-1106",
-                                       "gpt-3.5-turbo-0125",
-                                   } | _STRUCTURED_OUTPUT_SUPPORTING_MODELS
+        "gpt-4",
+        "gpt-4-turbo",
+        "gpt-4-turbo-preview",
+        "gpt-3.5-turbo-1106",
+        "gpt-3.5-turbo-0125",
+    } | _STRUCTURED_OUTPUT_SUPPORTING_MODELS
 
     def __init__(
         self,
@@ -40,6 +49,18 @@ class OpenAILLM(BaseLLM):
         retry_attempts: int = 3,
         retry_backoff: float = 1.0,
     ) -> None:
+        """Initializes the OpenAILLM provider.
+
+        Args:
+            api_key: Your OpenAI API key.
+            model: The OpenAI model identifier (e.g., "gpt-4o", "gpt-3.5-turbo").
+            temperature: The sampling temperature for generation.
+            max_tokens: The maximum number of tokens to generate.
+            stop: A list of sequences where the API will stop generation.
+            seed: The random seed for reproducibility (if supported by the model).
+            retry_attempts: Number of retries upon API call failure.
+            retry_backoff: Initial backoff factor for retries (exponential).
+        """
         self.client = SyncOpenAI(api_key=api_key)
         self.async_client = AsyncOpenAI(api_key=api_key)
         self.model = model
@@ -57,6 +78,22 @@ class OpenAILLM(BaseLLM):
         response_schema: Optional[Type[BaseModel]] = None,
         **kwargs: Any,
     ) -> Tuple[Dict[str, Any], Optional[str]]:
+        """Prepares the parameters dictionary for the OpenAI API call.
+
+        Determines the appropriate 'response_format' based on whether JSON mode
+        or structured output is requested, the provided schema, and model support.
+
+        Args:
+            is_json_mode: Flag indicating if JSON output is requested.
+            response_schema: The Pydantic model if structured output is desired.
+            **kwargs: Additional parameters to pass to the API call, overriding defaults.
+
+        Returns:
+            A tuple containing:
+                - The dictionary of parameters ready for the API call.
+                - A string indicating the JSON mode used ('json_schema', 'json_object', None),
+                  used for downstream processing logic.
+        """
         params = kwargs.copy()
         mode_used: Optional[str] = None
 
@@ -79,7 +116,7 @@ class OpenAILLM(BaseLLM):
                             "json_schema": {
                                 "name": response_schema.__name__,
                                 "description": response_schema.__doc__
-                                               or f"Schema for {response_schema.__name__}",
+                                or f"Schema for {response_schema.__name__}",
                                 "strict": True,
                                 "schema": schema_dict,
                             },
@@ -122,7 +159,7 @@ class OpenAILLM(BaseLLM):
                             "json_schema": {
                                 "name": response_schema.__name__,
                                 "description": response_schema.__doc__
-                                               or f"Schema for {response_schema.__name__}",
+                                or f"Schema for {response_schema.__name__}",
                                 "strict": True,
                                 "schema": schema_dict,
                             },
@@ -160,6 +197,22 @@ class OpenAILLM(BaseLLM):
         response_schema: Optional[Type[BaseModel]] = None,
         **kwargs: Any,
     ) -> Tuple[Any, Optional[str]]:
+        """Makes a synchronous call to the OpenAI chat completions API with retries.
+
+        Args:
+            is_json_mode: Flag indicating if JSON output is requested.
+            response_schema: The Pydantic model if structured output is desired.
+            **kwargs: API parameters prepared by `_prepare_api_params`.
+
+        Returns:
+            A tuple containing:
+                - The OpenAI API response object.
+                - The JSON mode identifier string returned by `_prepare_api_params`.
+
+        Raises:
+            openai.OpenAIError: If the API call fails after all retries.
+            Exception: For unexpected errors during the call.
+        """
         attempts = 0
         api_params, mode_used = self._prepare_api_params(
             is_json_mode=is_json_mode, response_schema=response_schema, **kwargs
@@ -187,6 +240,22 @@ class OpenAILLM(BaseLLM):
         response_schema: Optional[Type[BaseModel]] = None,
         **kwargs: Any,
     ) -> Tuple[Any, Optional[str]]:
+        """Makes an asynchronous call to the OpenAI chat completions API with retries.
+
+        Args:
+            is_json_mode: Flag indicating if JSON output is requested.
+            response_schema: The Pydantic model if structured output is desired.
+            **kwargs: API parameters prepared by `_prepare_api_params`.
+
+        Returns:
+            A tuple containing:
+                - The OpenAI API response object.
+                - The JSON mode identifier string returned by `_prepare_api_params`.
+
+        Raises:
+            openai.OpenAIError: If the API call fails after all retries.
+            Exception: For unexpected errors during the call.
+        """
         attempts = 0
         api_params, mode_used = self._prepare_api_params(
             is_json_mode=is_json_mode, response_schema=response_schema, **kwargs
@@ -216,6 +285,21 @@ class OpenAILLM(BaseLLM):
         stop: Optional[List[str]] = None,
         **kwargs: Any,
     ) -> str:
+        """Generates a single text completion using the configured OpenAI model.
+
+        Args:
+            prompt: The input text prompt.
+            temperature: Override for the default temperature.
+            max_tokens: Override for the default max_tokens.
+            stop: Override for the default stop sequences.
+            **kwargs: Additional parameters passed directly to the OpenAI API.
+
+        Returns:
+            The generated text completion.
+
+        Raises:
+            RuntimeError: If the API call fails or returns an empty response.
+        """
         call_kwargs = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
@@ -242,6 +326,21 @@ class OpenAILLM(BaseLLM):
         stop: Optional[List[str]] = None,
         **kwargs: Any,
     ) -> str:
+        """Asynchronously generates a single text completion using OpenAI.
+
+        Args:
+            prompt: The input text prompt.
+            temperature: Override for the default temperature.
+            max_tokens: Override for the default max_tokens.
+            stop: Override for the default stop sequences.
+            **kwargs: Additional parameters passed directly to the OpenAI API.
+
+        Returns:
+            The generated text completion.
+
+        Raises:
+            RuntimeError: If the API call fails or returns an empty response.
+        """
         call_kwargs = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
@@ -263,6 +362,23 @@ class OpenAILLM(BaseLLM):
     def _generate_json_internal(
         self, prompt: str, response_model: Type[BaseModel], **kwargs: Any
     ) -> Tuple[str, Optional[str]]:
+        """Internal method for OpenAI JSON generation.
+
+        Handles calling the API with JSON mode/structured output enabled.
+
+        Args:
+            prompt: The input prompt.
+            response_model: The Pydantic model for the expected response.
+            **kwargs: Additional OpenAI options.
+
+        Returns:
+            A tuple containing:
+                - The raw JSON string response from OpenAI.
+                - A string indicating the JSON mode used ('json_schema', 'json_object', None).
+
+        Raises:
+            RuntimeError: If the OpenAI API call fails or returns no content.
+        """
         call_kwargs = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
@@ -284,6 +400,23 @@ class OpenAILLM(BaseLLM):
     async def _generate_json_internal_async(
         self, prompt: str, response_model: Type[BaseModel], **kwargs: Any
     ) -> Tuple[str, Optional[str]]:
+        """Asynchronous internal method for OpenAI JSON generation.
+
+        Handles calling the async API with JSON mode/structured output enabled.
+
+        Args:
+            prompt: The input prompt.
+            response_model: The Pydantic model for the expected response.
+            **kwargs: Additional OpenAI options.
+
+        Returns:
+            A tuple containing:
+                - The raw JSON string response from OpenAI.
+                - A string indicating the JSON mode used ('json_schema', 'json_object', None).
+
+        Raises:
+            RuntimeError: If the OpenAI API call fails or returns no content.
+        """
         call_kwargs = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
@@ -310,6 +443,21 @@ class OpenAILLM(BaseLLM):
         stop: Optional[List[str]] = None,
         **kwargs: Any,
     ) -> Iterator[str]:
+        """Generates a stream of text chunks using the configured OpenAI model.
+
+        Args:
+            prompt: The input text prompt.
+            temperature: Override for the default temperature.
+            max_tokens: Override for the default max_tokens.
+            stop: Override for the default stop sequences.
+            **kwargs: Additional parameters passed directly to the OpenAI API.
+
+        Yields:
+            Strings representing chunks of the generated text.
+
+        Raises:
+            RuntimeError: If the API call fails.
+        """
         call_kwargs = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
@@ -334,6 +482,21 @@ class OpenAILLM(BaseLLM):
         stop: Optional[List[str]] = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
+        """Asynchronously generates a stream of text chunks using OpenAI.
+
+        Args:
+            prompt: The input text prompt.
+            temperature: Override for the default temperature.
+            max_tokens: Override for the default max_tokens.
+            stop: Override for the default stop sequences.
+            **kwargs: Additional parameters passed directly to the OpenAI API.
+
+        Yields:
+            Strings representing chunks of the generated text asynchronously.
+
+        Raises:
+            RuntimeError: If the API call fails.
+        """
         call_kwargs = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],

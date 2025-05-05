@@ -16,7 +16,7 @@ applications.
 * Supports using OpenAI and Ollama as LLM providers 
 * Easy to extend and add new LLM providers and CoT strategies
 * Supports structured model output with Pydantic validation
-* Includes a customizable benchmarking framework (see [benches](benches))
+* Includes a customizable benchmarking framework (see [benches](https://github.com/habedi/cogitator/blob/main/benches))
 * Includes implementations of popular CoT strategies and frameworks like
     - [Self-Consistency CoT (ICLR 2023)](https://arxiv.org/abs/2203.11171)
     - [Automatic CoT (ICLR 2023)](https://arxiv.org/abs/2210.03493)
@@ -60,17 +60,17 @@ different LLM providers and CoT strategies.
 The Cogitator library's functionality is organized into several key modules:
 
 * **LLM Providers (`cogitator.model`)**
-    * [`BaseLLM`](api/model.md): The abstract base LLM provider class that defines a common interface for all LLM providers.
-    * [`OpenAILLM`](api/openai.md): LLM provider implementation for using OpenAI models (like gpt-4o-mini and gpt-4o).
-    * [`OllamaLLM`](api/ollama.md): LLM provider implementation for using Ollama models (like Llama, Gemma, and Qwen).
+    * [`BaseLLM`](api/model/base.md): The abstract base LLM provider class that defines a common interface for all LLM providers.
+    * [`OpenAILLM`](api/model/openai.md): LLM provider implementation for using OpenAI models (like gpt-4o-mini and gpt-4o).
+    * [`OllamaLLM`](api/model/ollama.md): LLM provider implementation for using Ollama models (like Llama, Gemma, and Qwen).
 
 * **CoT Strategies (`cogitator.strategies`)**
-    * [`AutoCoT`](api/auto_cot.md): An implementation of the automatic CoT prompting strategy from [this paper](https://arxiv.org/abs/2210.03493).
-    * [`CDWCoT`](api/cdw_cot.md): An implementation of the clustered distance-weighted CoT framework from [this paper](https://arxiv.org/abs/2501.12226).
-    * [`GraphOfThoughts`](api/graph_of_thoughts.md): An implementation of the graph of thoughts CoT framework from [this paper](https://arxiv.org/abs/2308.09687).
-    * [`LeastToMost`](api/least_to_most.md): An implementation of the least-to-most prompting strategy from [this paper](https://arxiv.org/abs/2205.10625).
-    * [`SelfConsistency`](api/sc_cot.md): An implementation of the self-consistency prompting strategy from [this paper](https://arxiv.org/abs/2203.11171).
-    * [`TreeOfThoughts`](api/tree_of_thoughts.md): An implementation of the tree of thoughts CoT framework from [this paper](https://arxiv.org/abs/2305.10601).
+    * [`AutoCoT`](api/strategies/auto_cot.md): An implementation of the automatic CoT prompting strategy from [this paper](https://arxiv.org/abs/2210.03493).
+    * [`CDWCoT`](api/strategies/cdw_cot.md): An implementation of the clustered distance-weighted CoT framework from [this paper](https://arxiv.org/abs/2501.12226).
+    * [`GraphOfThoughts`](api/strategies/graph_of_thoughts.md): An implementation of the graph of thoughts CoT framework from [this paper](https://arxiv.org/abs/2308.09687).
+    * [`LeastToMost`](api/strategies/least_to_most.md): An implementation of the least-to-most prompting strategy from [this paper](https://arxiv.org/abs/2205.10625).
+    * [`SelfConsistency`](api/strategies/sc_cot.md): An implementation of the self-consistency prompting strategy from [this paper](https://arxiv.org/abs/2203.11171).
+    * [`TreeOfThoughts`](api/strategies/tree_of_thoughts.md): An implementation of the tree of thoughts CoT framework from [this paper](https://arxiv.org/abs/2305.10601).
 
 * **Data Formatting and Validation (`cogitator.schemas`)**
     * [`Schemas`](api/schemas.md): A set of Pydantic models that are used for validating structure of outputs from LLMs.
@@ -78,6 +78,7 @@ The Cogitator library's functionality is organized into several key modules:
 * **Utilities**
     * [`Embedding`](api/embedding.md): A set of tools for embedding prompt text which is used by strategies like AutoCoT and CDWCoT.
     * [`Clustering`](api/clustering.md): Includes clustering algorithms for grouping similar embeddings that is used during the training phase of strategies like AutoCoT and CDWCoT.
+    * [`Functions`](api/utils.md): A set of utility functions for working with the library.
 
 ## Extra Resources
 

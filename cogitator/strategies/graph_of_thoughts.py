@@ -1,3 +1,5 @@
+"""Implements the Graph of Thoughts (GoT) reasoning strategy."""
+
 import asyncio
 import json
 import logging
@@ -14,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def _strip_fences(text: str) -> str:
+    """Removes markdown code fences (```json ... ``` or ``` ... ```) from text."""
     t = text.strip()
     match = re.match(r"```(?:json)?\s*(.*)\s*```", t, re.DOTALL | re.IGNORECASE)
     if match:
@@ -24,7 +27,23 @@ def _strip_fences(text: str) -> str:
 
 
 class GraphOfThoughts:
+    """Implements the Graph of Thoughts (GoT) prompting framework.
+
+    GoT represents the reasoning process as a graph where nodes are partial solutions
+    (thoughts) and edges represent dependencies or transformations between them.
+    It allows for aggregating information from multiple reasoning paths and cycles.
+    This implementation uses iterative expansion and evaluation with beam search and
+    optional node merging based on semantic similarity.
+
+    Reference:
+        Besta, M., Blach, N., Kubik, A., et al. (2023).
+        Graph of Thoughts: Solving Elaborate Problems with Large Language Models.
+        arXiv preprint arXiv:2308.09687.
+    """
+
     class _Node:
+        """Represents a node in the Graph of Thoughts."""
+
         __slots__ = ("children", "data", "embed", "id", "parents", "score_sum", "steps", "visits")
         _id_counter = 0
 
@@ -35,6 +54,14 @@ class GraphOfThoughts:
             parents: Optional[List["GraphOfThoughts._Node"]] = None,
             data: Optional[Any] = None,
         ) -> None:
+            """Initializes a GoT node.
+
+            Args:
+                steps: The sequence of reasoning steps leading to this node.
+                embedder: The embedding model used for calculating node similarity.
+                parents: A list of parent nodes.
+                data: Optional arbitrary data associated with the node.
+            """
             self.id = GraphOfThoughts._Node._id_counter
             GraphOfThoughts._Node._id_counter += 1
 
@@ -57,9 +84,11 @@ class GraphOfThoughts:
                 self.embed = None
 
         def score(self) -> float:
+            """Calculates the average score of the node based on evaluations."""
             return self.score_sum / self.visits if self.visits > 0 else 0.0
 
         def is_ancestor(self, potential_ancestor: "GraphOfThoughts._Node") -> bool:
+            """Checks if `potential_ancestor` is an ancestor of this node."""
             if not self.parents:
                 return False
             queue = list(self.parents)
@@ -74,6 +103,7 @@ class GraphOfThoughts:
             return False
 
         def __repr__(self) -> str:
+            """Returns a string representation of the node."""
             pids = [p.id for p in self.parents]
             return (
                 f"Node(id={self.id}, steps={len(self.steps)}, "
@@ -103,6 +133,23 @@ class GraphOfThoughts:
         seed: Optional[int] = None,
         embedder: Optional[BaseEmbedder] = None,
     ) -> None:
+        """Initializes the GraphOfThoughts strategy handler.
+
+        Args:
+            llm: The language model instance.
+            max_iters: Maximum number of expansion iterations.
+            num_branches: Number of thoughts to generate during expansion.
+            beam_width: Number of top nodes to keep in the frontier after evaluation.
+            merge_threshold: Cosine similarity threshold for merging nodes.
+            expand_prompt: Prompt template for generating new thoughts. Must include
+                           placeholders {k} (num_branches) and {ctx} (current path).
+            eval_prompt: Prompt template for evaluating a reasoning path. Must include
+                         placeholder {steps}. Expects JSON output matching EvaluationResult.
+            final_answer_format: Whether to extract the final answer as raw text or JSON.
+            max_tokens: Default maximum tokens for LLM generation calls.
+            seed: Random seed for LLM calls and potential internal randomization.
+            embedder: Embedding model instance. Defaults to SentenceTransformerEmbedder.
+        """
         self.llm = llm
         self.max_iters = max_iters
         self.num_branches = num_branches
@@ -117,6 +164,17 @@ class GraphOfThoughts:
         self.seed = seed
 
     def _parse(self, raw: str) -> List[str]:
+        """Parses the LLM response from the expansion step.
+
+        Expects a JSON list of strings, potentially within markdown fences.
+        Also handles a dictionary with a "thoughts" key containing the list.
+
+        Args:
+            raw: The raw string response from the LLM.
+
+        Returns:
+            A list of parsed thought strings, limited by `num_branches`.
+        """
         raw_stripped = _strip_fences(raw)
         try:
             parsed_obj = json.loads(raw_stripped)
@@ -152,7 +210,19 @@ class GraphOfThoughts:
             logger.error("Unexpected error during expansion parsing: %s", e, exc_info=True)
             return []
 
-    def _evaluate(self, steps: List[str], **kwargs) -> float:
+    def _evaluate(self, steps: List[str], **kwargs: Any) -> float:
+        """Evaluates a sequence of reasoning steps using the LLM.
+
+        Uses `eval_prompt` and expects a JSON response matching `EvaluationResult`.
+        Normalizes the score to be between 0.0 and 1.0.
+
+        Args:
+            steps: The list of reasoning steps to evaluate.
+            **kwargs: Additional arguments passed to the LLM `generate_json` call.
+
+        Returns:
+            The normalized evaluation score (0.0 to 1.0), or 0.0 on failure.
+        """
         if not steps:
             return 0.0
         numbered = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(steps))
@@ -182,8 +252,20 @@ class GraphOfThoughts:
             return 0.0
 
     async def _evaluate_async(
-        self, steps: List[str], semaphore: Optional[asyncio.Semaphore] = None, **kwargs
+        self, steps: List[str], semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
     ) -> float:
+        """Asynchronously evaluates a sequence of reasoning steps using the LLM.
+
+        Similar to `_evaluate`, but uses async LLM calls.
+
+        Args:
+            steps: The list of reasoning steps to evaluate.
+            semaphore: Optional asyncio.Semaphore to limit concurrent LLM calls.
+            **kwargs: Additional arguments passed to the async LLM `generate_json_async` call.
+
+        Returns:
+            The normalized evaluation score (0.0 to 1.0), or 0.0 on failure.
+        """
         if not steps:
             return 0.0
         numbered = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(steps))
@@ -220,6 +302,19 @@ class GraphOfThoughts:
             return 0.0
 
     def _find_similar_node(self, new_node: _Node, nodes_to_check: List[_Node]) -> Optional[_Node]:
+        """Finds an existing node similar to `new_node` based on embedding similarity.
+
+        Calculates cosine similarity between the `new_node` embedding and embeddings
+        of nodes in `nodes_to_check`. If similarity exceeds `merge_threshold`,
+        returns the similar node. Skips checking ancestors.
+
+        Args:
+            new_node: The node to check for similarity.
+            nodes_to_check: A list of existing nodes to compare against.
+
+        Returns:
+            The similar node if found above the threshold, otherwise None.
+        """
         if new_node.embed is None:
             logger.debug(f"Skipping similarity check for node {new_node.id} (no embedding).")
             return None
@@ -257,7 +352,21 @@ class GraphOfThoughts:
 
         return None
 
-    def run(self, question: str, **kwargs) -> str:
+    def run(self, question: str, **kwargs: Any) -> str:
+        """Executes the Graph of Thoughts reasoning process for a given question.
+
+        Iteratively expands nodes in the frontier, evaluates new nodes, merges similar ones,
+        and prunes the frontier using beam search. Finally, selects the best path
+        and generates a final answer based on it.
+
+        Args:
+            question: The initial question or problem statement.
+            **kwargs: Additional arguments passed to internal LLM calls (expand, eval, final).
+
+        Returns:
+            The final answer string generated by the LLM based on the best reasoning path.
+            Returns an error message if no paths are generated or the final generation fails.
+        """
         GraphOfThoughts._Node._id_counter = 0
         root = self._Node([question], embedder=self.embedder)
         frontier = [root]
@@ -394,8 +503,22 @@ class GraphOfThoughts:
             return "Error generating final answer."
 
     async def run_async(
-        self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs
+        self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
     ) -> str:
+        """Asynchronously executes the Graph of Thoughts reasoning process.
+
+        Similar to `run`, but performs expansion and evaluation steps concurrently
+        using asyncio.
+
+        Args:
+            question: The initial question or problem statement.
+            semaphore: Optional asyncio.Semaphore to limit concurrent LLM calls.
+            **kwargs: Additional arguments passed to internal async LLM calls.
+
+        Returns:
+            The final answer string generated by the LLM based on the best reasoning path.
+            Returns an error message if no paths are generated or the final generation fails.
+        """
         GraphOfThoughts._Node._id_counter = 0
         root = self._Node([question], embedder=self.embedder)
         frontier = [root]

@@ -1,3 +1,11 @@
+"""Cogitator: A Python Toolkit for Chain-of-Thought Prompting.
+
+This package provides implementations of various chain-of-thought (CoT) prompting
+strategies and frameworks, along with supporting utilities like LLM provider interfaces,
+embedding models, clustering algorithms, and data validation schemas.
+It aims to make it easier to try and integrate CoT methods into AI applications.
+"""
+
 import importlib
 import logging
 
@@ -10,12 +18,14 @@ from .schemas import (
     LTMDecomposition,
     ThoughtExpansion,
 )
-from .strategies import AutoCoT
-from .strategies import CDWCoT
-from .strategies import GraphOfThoughts
-from .strategies import LeastToMost
-from .strategies import SelfConsistency
-from .strategies import TreeOfThoughts
+from .strategies import (
+    AutoCoT,
+    CDWCoT,
+    GraphOfThoughts,
+    LeastToMost,
+    SelfConsistency,
+    TreeOfThoughts,
+)
 from .utils import accuracy, approx_token_length, count_steps, exact_match
 
 _logger = logging.getLogger(__name__)

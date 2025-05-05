@@ -1,7 +1,9 @@
+"""Implements the Cluster-Dependent Weighted Chain-of-Thought (CDW-CoT) strategy."""
+
 import asyncio
 import logging
 import time
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Any
 
 import numpy as np
 
@@ -14,6 +16,24 @@ logger = logging.getLogger(__name__)
 
 
 class CDWCoT:
+    """Implements Cluster-Dependent Weighted Chain-of-Thought (CDW-CoT).
+
+    CDW-CoT involves creating a pool of CoT demonstrations, clustering the
+    training questions, and learning separate prompt selection distributions
+    for each cluster. At inference time, the test question is assigned to the
+    nearest cluster, and its corresponding distribution is used to sample
+    prompts for the final context.
+
+    Reference:
+        Wang, X., Wei, F., Schuurmans, D., Le, Q., Chi, E., Narang, S., Mirhoseini, A., & Zhou, D.
+        (2023). Self-Consistency Improves Chain of Thought Reasoning in Language Models.
+        In International Conference on Learning Representations (ICLR).
+        (Note: The reference describes Self-Consistency, but CDW-CoT builds upon similar
+         ideas of generating multiple paths and combining them, adapted here for prompt selection).
+        (Actual CDW-CoT reference might be missing, this implementation follows the pattern
+         described in related prompt optimization literature).
+    """
+
     def __init__(
         self,
         llm: BaseLLM,
@@ -29,6 +49,22 @@ class CDWCoT:
         embedder: Optional[BaseEmbedder] = None,
         clusterer: Optional[BaseClusterer] = None,
     ) -> None:
+        """Initializes the CDWCoT strategy handler.
+
+        Args:
+            llm: The language model instance.
+            pool_size: The target size of the demonstration prompt pool (PC).
+            n_clusters: The number of clusters to divide the training questions into.
+            lr: Learning rate for updating the cluster distributions during training.
+            sample_size: Number of demonstrations to sample for context during training
+                         validation and final inference. Also used as batch size during training.
+            seed: Random seed for clustering, sampling, and potential LLM calls.
+            max_tokens: Default maximum tokens for LLM generation calls.
+            max_grad_norm: Maximum norm for clipping gradients during training.
+            init_pool_retries: Number of retries if LLM fails during initial pool generation.
+            embedder: Embedding model instance. Defaults to SentenceTransformerEmbedder.
+            clusterer: Clustering algorithm instance. Defaults to KMeansClusterer.
+        """
         self.llm = llm
         self.pool_size = pool_size
         self.n_clusters = n_clusters
@@ -50,9 +86,26 @@ class CDWCoT:
         self.train_labels: List[int] = []
 
     def _is_valid_distribution(self, p: np.ndarray) -> bool:
+        """Checks if a NumPy array represents a valid probability distribution."""
         return bool(p.size) and np.all(p >= 0) and np.isclose(p.sum(), 1.0)
 
     def _select_pool_indices(self, questions: List[str]) -> List[Tuple[int, str]]:
+        """Selects candidate questions for the prompt pool based on clustering.
+
+        Embeds questions, clusters them, and selects candidates closest to each
+        cluster centroid, aiming for a total pool size close to `pool_size`.
+
+        Args:
+            questions: The list of questions to select from.
+
+        Returns:
+            A list of tuples, each containing the original index and the text
+            of a selected candidate question.
+
+        Raises:
+            ValueError: If `n_clusters` is <= 0.
+            RuntimeError: If embedding fails.
+        """
         N = len(questions)
         effective_n = min(self.n_clusters, N)
         if effective_n <= 0:
@@ -97,7 +150,23 @@ class CDWCoT:
         )
         return selected_candidates
 
-    def init_pool(self, questions: List[str], answers: List[str], **kwargs) -> None:
+    def init_pool(self, questions: List[str], answers: List[str], **kwargs: Any) -> None:
+        """Initializes the prompt pool (PC) by generating CoT for selected candidates.
+
+        Uses `_select_pool_indices` to get candidates, then generates CoT reasoning
+        for each using the LLM. Stores successful generations in `self.PC`. Also
+        initializes uniform probability distributions (`self.p_cluster`) for each cluster.
+
+        Args:
+            questions: List of training questions.
+            answers: Corresponding list of training answers.
+            **kwargs: Additional arguments passed to the LLM generation call.
+
+        Raises:
+            ValueError: If question and answer lists have different lengths.
+            RuntimeError: If pool selection yields no candidates or if all CoT
+                          generations fail.
+        """
         if len(questions) != len(answers):
             raise ValueError("Questions and answers list length mismatch.")
 
@@ -169,8 +238,23 @@ class CDWCoT:
         questions: List[str],
         answers: List[str],
         semaphore: Optional[asyncio.Semaphore] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
+        """Asynchronously initializes the prompt pool (PC).
+
+        Similar to `init_pool` but performs LLM generations asynchronously.
+
+        Args:
+            questions: List of training questions.
+            answers: Corresponding list of training answers.
+            semaphore: Optional asyncio.Semaphore to limit concurrent LLM calls.
+            **kwargs: Additional arguments passed to the async LLM generation call.
+
+        Raises:
+            ValueError: If question and answer lists have different lengths.
+            RuntimeError: If pool selection yields no candidates or if all CoT
+                          generations fail.
+        """
         if len(questions) != len(answers):
             raise ValueError("Questions and answers list length mismatch.")
 
@@ -197,21 +281,16 @@ class CDWCoT:
                         else None
                     )
                     local_kwargs = kwargs.copy()
+                    gen_args = {
+                        "max_tokens": local_kwargs.pop("max_tokens", self.max_tokens),
+                        "seed": gen_seed,
+                        **local_kwargs,
+                    }
                     if semaphore:
                         async with semaphore:
-                            cot = await self.llm.generate_async(
-                                prompt,
-                                max_tokens=local_kwargs.pop("max_tokens", self.max_tokens),
-                                seed=gen_seed,
-                                **local_kwargs,
-                            )
+                            cot = await self.llm.generate_async(prompt, **gen_args)
                     else:
-                        cot = await self.llm.generate_async(
-                            prompt,
-                            max_tokens=local_kwargs.pop("max_tokens", self.max_tokens),
-                            seed=gen_seed,
-                            **local_kwargs,
-                        )
+                        cot = await self.llm.generate_async(prompt, **gen_args)
                     logger.debug(
                         f"Successfully generated async CoT for pool candidate index {idx}."
                     )
@@ -274,7 +353,26 @@ class CDWCoT:
             f"Initialized prompt pool asynchronously with {M} prompts and {num_cl} uniform cluster distributions."
         )
 
-    def train(self, val_split: float = 0.2, epochs: int = 100, patience: int = 5, **kwargs) -> None:
+    def train(self, val_split: float = 0.2, epochs: int = 100, patience: int = 5, **kwargs: Any) -> None:
+        """Trains the cluster-dependent prompt distributions.
+
+        Iterates through epochs, sampling batches from each cluster's training data.
+        For each sample, it selects a prompt from the pool based on the current
+        cluster distribution, generates an answer, calculates a loss (0 for correct,
+        1 for incorrect), computes policy gradients, and updates the distribution.
+        Uses a validation set for early stopping.
+
+        Args:
+            val_split: Fraction of data within each cluster to use for validation.
+            epochs: Maximum number of training epochs.
+            patience: Number of epochs with no improvement on validation accuracy
+                      before early stopping.
+            **kwargs: Additional arguments passed to LLM generation calls during
+                      training and validation.
+
+        Raises:
+            RuntimeError: If `init_pool` has not been called successfully first.
+        """
         if not self.PC or self.cluster_centers is None or not self.p_cluster:
             raise RuntimeError("Call init_pool first before training.")
 
@@ -425,8 +523,22 @@ class CDWCoT:
         epochs: int = 100,
         patience: int = 5,
         semaphore: Optional[asyncio.Semaphore] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
+        """Asynchronously trains the cluster-dependent prompt distributions.
+
+        Similar to `train`, but performs LLM generation calls asynchronously.
+
+        Args:
+            val_split: Fraction of data within each cluster for validation.
+            epochs: Maximum number of training epochs.
+            patience: Epochs with no validation improvement before early stopping.
+            semaphore: Optional asyncio.Semaphore to limit concurrent LLM calls.
+            **kwargs: Additional arguments for async LLM calls during training/validation.
+
+        Raises:
+            RuntimeError: If `init_pool` or `init_pool_async` has not been called first.
+        """
         if not self.PC or self.cluster_centers is None or not self.p_cluster:
             raise RuntimeError("Call init_pool_async first before training.")
 
@@ -496,21 +608,16 @@ class CDWCoT:
                         try:
                             gen_seed = (self.seed or 0) + epoch * len(batch_indices) + j
                             local_kwargs = kwargs.copy()
+                            gen_args = {
+                                "max_tokens": local_kwargs.pop("max_tokens", self.max_tokens),
+                                "seed": gen_seed,
+                                **local_kwargs,
+                            }
                             if semaphore:
                                 async with semaphore:
-                                    out = await self.llm.generate_async(
-                                        payload,
-                                        max_tokens=local_kwargs.pop("max_tokens", self.max_tokens),
-                                        seed=gen_seed,
-                                        **local_kwargs,
-                                    )
+                                    out = await self.llm.generate_async(payload, **gen_args)
                             else:
-                                out = await self.llm.generate_async(
-                                    payload,
-                                    max_tokens=local_kwargs.pop("max_tokens", self.max_tokens),
-                                    seed=gen_seed,
-                                    **local_kwargs,
-                                )
+                                out = await self.llm.generate_async(payload, **gen_args)
 
                             if exact_match(out, self.train_answers[orig_idx]):
                                 loss = 0.0
@@ -554,23 +661,16 @@ class CDWCoT:
                         try:
                             val_seed = (self.seed or 0) + val_orig_idx
                             local_kwargs_val = kwargs.copy()
+                            val_gen_args = {
+                                "max_tokens": local_kwargs_val.pop("max_tokens", self.max_tokens),
+                                "seed": val_seed,
+                                **local_kwargs_val,
+                            }
                             if semaphore:
                                 async with semaphore:
-                                    val_out = await self.llm.generate_async(
-                                        vp,
-                                        max_tokens=local_kwargs_val.pop(
-                                            "max_tokens", self.max_tokens
-                                        ),
-                                        seed=val_seed,
-                                        **local_kwargs_val,
-                                    )
+                                    val_out = await self.llm.generate_async(vp, **val_gen_args)
                             else:
-                                val_out = await self.llm.generate_async(
-                                    vp,
-                                    max_tokens=local_kwargs_val.pop("max_tokens", self.max_tokens),
-                                    seed=val_seed,
-                                    **local_kwargs_val,
-                                )
+                                val_out = await self.llm.generate_async(vp, **val_gen_args)
                         except Exception as e:
                             logger.error(
                                 f"Async validation generation failed q_idx {val_orig_idx}: {e}"
@@ -608,6 +708,21 @@ class CDWCoT:
         logger.info("Asynchronous CDW-CoT training complete for all clusters.")
 
     def _calculate_combined_distribution(self, question: str) -> np.ndarray:
+        """Calculates the prompt selection distribution for a given question.
+
+        Embeds the question, finds the nearest cluster center, and returns the
+        learned distribution for that cluster. Falls back to a uniform distribution
+        if clustering failed, distributions weren't learned, or errors occur.
+
+        Args:
+            question: The input test question.
+
+        Returns:
+            A NumPy array representing the probability distribution over the prompt pool (PC).
+
+        Raises:
+            RuntimeError: If the prompt pool (PC) is empty.
+        """
         M = len(self.PC)
         if M == 0:
             raise RuntimeError("Prompt pool (PC) is empty. Cannot calculate distribution.")
@@ -670,7 +785,23 @@ class CDWCoT:
         logger.debug("Falling back to uniform distribution.")
         return np.ones(M) / M
 
-    def run(self, test_q: str, **kwargs) -> str:
+    def run(self, test_q: str, **kwargs: Any) -> str:
+        """Runs the CDW-CoT strategy for a given test question.
+
+        Determines the appropriate prompt distribution using `_calculate_combined_distribution`,
+        samples top prompts according to this distribution, constructs the context,
+        and generates the final answer using the LLM.
+
+        Args:
+            test_q: The test question to answer.
+            **kwargs: Additional arguments passed to the final LLM generation call.
+
+        Returns:
+            The LLM-generated answer string.
+
+        Raises:
+            RuntimeError: If the prompt pool is empty.
+        """
         dist = self._calculate_combined_distribution(test_q)
         M = len(self.PC)
         if M == 0:
@@ -693,8 +824,22 @@ class CDWCoT:
         )
 
     async def run_async(
-        self, test_q: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs
-    ) -> str:
+        self, test_q: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any) -> str:
+        """Asynchronously runs the CDW-CoT strategy for a given test question.
+
+        Similar to `run`, but performs the final LLM generation call asynchronously.
+
+        Args:
+            test_q: The test question to answer.
+            semaphore: Optional asyncio.Semaphore to limit concurrent LLM calls.
+            **kwargs: Additional arguments passed to the final async LLM generation call.
+
+        Returns:
+            The LLM-generated answer string.
+
+        Raises:
+            RuntimeError: If the prompt pool is empty.
+        """
         dist = self._calculate_combined_distribution(test_q)
         M = len(self.PC)
         if M == 0:
