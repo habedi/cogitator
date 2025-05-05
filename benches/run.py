@@ -141,19 +141,31 @@ def get_methods_to_run(
                     wrapped_run_method = None
                 else:
                     logger.info(f"GraphOfThoughts configured with GoO: {goo_list}")
+                    # --- Start: CORRECTED Block ---
+                    current_goo = goo_list
+                    current_instance = instance
+                    current_kwargs = run_kwargs.copy()
+
                     if use_async:
-                        run_method_base = instance.run_async
-                        wrapped_run_method = lambda q, goo=goo_list, \
-                                                    rk=run_kwargs: run_method_base(q,
-                                                                                   graph_of_operations=goo,
-                                                                                   **rk)
+                        wrapped_run_method = lambda q_arg: current_instance.run_async(
+                            q_arg, current_goo, **current_kwargs
+                        )
                     else:
-                        logger.warning(
-                            "GraphOfThoughts sync run is not supported, skipping sync execution.")
-                        wrapped_run_method = None
-            else:
+                        wrapped_run_method = lambda q_arg: current_instance.run(
+                            q_arg, current_goo, **current_kwargs
+                        )
+                    # --- End: CORRECTED Block ---
+
+            else: # Handles other strategies like TreeOfThoughts, LeastToMost, etc.
                 run_method_base = instance.run_async if use_async else instance.run
-                wrapped_run_method = lambda q, rk=run_kwargs: run_method_base(q, **rk)
+                # Ensure this lambda structure is appropriate for other methods too
+                # (Most take only 'q' and **kwargs, so this should be fine)
+                current_instance = instance
+                current_kwargs = run_kwargs.copy()
+                wrapped_run_method = lambda q_arg: run_method_base(
+                    q_arg, **current_kwargs
+                )
+
 
             if wrapped_run_method is not None:
                 methods.append((name, wrapped_run_method))
@@ -179,13 +191,21 @@ async def run_single_async(q: str, model_func: Callable, semaphore: asyncio.Sema
     return str(raw_output) if raw_output is not None else "[ERROR]", time_taken
 
 
-def run_single_sync(q: str, model_func: Callable) -> Tuple[str, float]:
+def run_single_sync(q: str, model_func: Callable, strategy_name: str) -> Tuple[str, float]:
     t0 = time.time()
     raw_output = "[ERROR]"
     try:
         raw_output = model_func(q)
+    except NotImplementedError as nie:
+        if strategy_name == "GraphOfThoughts":
+            logger.warning(f"Caught expected NotImplementedError for {strategy_name}: {nie}")
+            raw_output = f"[ERROR: {type(nie).__name__} - Sync not supported]"
+        else:
+            logger.error(f"Caught unexpected NotImplementedError for {strategy_name}: {nie}",
+                         exc_info=True)
+            raw_output = f"[ERROR: {type(nie).__name__}]"
     except Exception as e:
-        logger.error(f"Error during sync generation: {e}", exc_info=True)
+        logger.error(f"Error during sync generation for {strategy_name}: {e}", exc_info=True)
         raw_output = f"[ERROR: {type(e).__name__}]"
     time_taken = time.time() - t0
     return str(raw_output) if raw_output is not None else "[ERROR]", time_taken
@@ -363,7 +383,8 @@ async def main():
                         continue
 
                     logger.info(f"Running: Q{i + 1} - {name}")
-                    raw_output, time_taken = run_single_sync(q, model_func_wrapped)
+
+                    raw_output, time_taken = run_single_sync(q, model_func_wrapped, name)
                     record = {"question": q, "gold": golds[i], "method": name,
                               "dataset": config['dataset'],
                               "raw_output": raw_output, "time": time_taken}

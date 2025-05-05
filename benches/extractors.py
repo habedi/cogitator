@@ -65,7 +65,7 @@ def _extract_numerical_heuristic(text: str) -> Optional[str]:
     numerical_patterns = [
         r'(?:final answer is|the final answer is|final answer:|answer:|the answer is)\s*:?\s*(' + num_pattern_loose + r')\b',
         r'(?:is|equals|result is|=)\s*(' + num_pattern_loose + r')\s*\.?\s*$',
-    ]
+        ]
 
     if lines:
         last_line = lines[-1].strip()

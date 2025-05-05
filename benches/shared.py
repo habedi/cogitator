@@ -317,7 +317,7 @@ def extract_final_answer(raw_output: str) -> str:
         r'(?:final answer is|the final answer is|final answer:|answer:|the answer is)\s*(' + num_pattern + r')\b',
         r'\\boxed\{(' + num_pattern + r')\}',
         r'(?:is|equals|result is|=)\s*(' + num_pattern + r')\s*\.?\s*$',
-    ]
+        ]
     for pattern in numerical_patterns:
         match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
         if match:

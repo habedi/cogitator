@@ -31,23 +31,23 @@ class OpenAILLM(BaseLLM):
     }
 
     _JSON_MODE_SUPPORTING_MODELS = {
-        "gpt-4",
-        "gpt-4-turbo",
-        "gpt-4-turbo-preview",
-        "gpt-3.5-turbo-1106",
-        "gpt-3.5-turbo-0125",
-    } | _STRUCTURED_OUTPUT_SUPPORTING_MODELS
+                                       "gpt-4",
+                                       "gpt-4-turbo",
+                                       "gpt-4-turbo-preview",
+                                       "gpt-3.5-turbo-1106",
+                                       "gpt-3.5-turbo-0125",
+                                   } | _STRUCTURED_OUTPUT_SUPPORTING_MODELS
 
     def __init__(
-        self,
-        api_key: str,
-        model: str = "gpt-4.1-nano",
-        temperature: float = 0.7,
-        max_tokens: int = 512,
-        stop: Optional[List[str]] = None,
-        seed: Optional[int] = 33,
-        retry_attempts: int = 3,
-        retry_backoff: float = 1.0,
+            self,
+            api_key: str,
+            model: str = "gpt-4.1-nano",
+            temperature: float = 0.7,
+            max_tokens: int = 512,
+            stop: Optional[List[str]] = None,
+            seed: Optional[int] = 33,
+            retry_attempts: int = 3,
+            retry_backoff: float = 1.0,
     ) -> None:
         """Initializes the OpenAILLM provider.
 
@@ -73,10 +73,10 @@ class OpenAILLM(BaseLLM):
         logger.info(f"Initialized OpenAILLM with model: {self.model}")
 
     def _prepare_api_params(
-        self,
-        is_json_mode: bool = False,
-        response_schema: Optional[Type[BaseModel]] = None,
-        **kwargs: Any,
+            self,
+            is_json_mode: bool = False,
+            response_schema: Optional[Type[BaseModel]] = None,
+            **kwargs: Any,
     ) -> Tuple[Dict[str, Any], Optional[str]]:
         """Prepares the parameters dictionary for the OpenAI API call.
 
@@ -116,7 +116,7 @@ class OpenAILLM(BaseLLM):
                             "json_schema": {
                                 "name": response_schema.__name__,
                                 "description": response_schema.__doc__
-                                or f"Schema for {response_schema.__name__}",
+                                               or f"Schema for {response_schema.__name__}",
                                 "strict": True,
                                 "schema": schema_dict,
                             },
@@ -159,7 +159,7 @@ class OpenAILLM(BaseLLM):
                             "json_schema": {
                                 "name": response_schema.__name__,
                                 "description": response_schema.__doc__
-                                or f"Schema for {response_schema.__name__}",
+                                               or f"Schema for {response_schema.__name__}",
                                 "strict": True,
                                 "schema": schema_dict,
                             },
@@ -189,13 +189,20 @@ class OpenAILLM(BaseLLM):
         if "seed" not in params and self.seed is not None:
             params["seed"] = self.seed
 
+        if params.get("seed") is not None:
+            try:
+                params["seed"] = int(params["seed"])
+            except (ValueError, TypeError):
+                logger.warning(f"Could not convert seed value {params['seed']} to int. Setting seed to None.")
+                if "seed" in params: del params["seed"]
+
         return params, mode_used
 
     def _call_api(
-        self,
-        is_json_mode: bool = False,
-        response_schema: Optional[Type[BaseModel]] = None,
-        **kwargs: Any,
+            self,
+            is_json_mode: bool = False,
+            response_schema: Optional[Type[BaseModel]] = None,
+            **kwargs: Any,
     ) -> Tuple[Any, Optional[str]]:
         """Makes a synchronous call to the OpenAI chat completions API with retries.
 
@@ -235,10 +242,10 @@ class OpenAILLM(BaseLLM):
                 raise
 
     async def _call_api_async(
-        self,
-        is_json_mode: bool = False,
-        response_schema: Optional[Type[BaseModel]] = None,
-        **kwargs: Any,
+            self,
+            is_json_mode: bool = False,
+            response_schema: Optional[Type[BaseModel]] = None,
+            **kwargs: Any,
     ) -> Tuple[Any, Optional[str]]:
         """Makes an asynchronous call to the OpenAI chat completions API with retries.
 
@@ -278,12 +285,12 @@ class OpenAILLM(BaseLLM):
                 raise
 
     def generate(
-        self,
-        prompt: str,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
-        stop: Optional[List[str]] = None,
-        **kwargs: Any,
+            self,
+            prompt: str,
+            temperature: Optional[float] = None,
+            max_tokens: Optional[int] = None,
+            stop: Optional[List[str]] = None,
+            **kwargs: Any,
     ) -> str:
         """Generates a single text completion using the configured OpenAI model.
 
@@ -319,12 +326,12 @@ class OpenAILLM(BaseLLM):
         return text.strip()
 
     async def generate_async(
-        self,
-        prompt: str,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
-        stop: Optional[List[str]] = None,
-        **kwargs: Any,
+            self,
+            prompt: str,
+            temperature: Optional[float] = None,
+            max_tokens: Optional[int] = None,
+            stop: Optional[List[str]] = None,
+            **kwargs: Any,
     ) -> str:
         """Asynchronously generates a single text completion using OpenAI.
 
@@ -360,7 +367,7 @@ class OpenAILLM(BaseLLM):
         return text.strip()
 
     def _generate_json_internal(
-        self, prompt: str, response_model: Type[BaseModel], **kwargs: Any
+            self, prompt: str, response_model: Type[BaseModel], **kwargs: Any
     ) -> Tuple[str, Optional[str]]:
         """Internal method for OpenAI JSON generation.
 
@@ -398,7 +405,7 @@ class OpenAILLM(BaseLLM):
         return choices[0].message.content, mode_used
 
     async def _generate_json_internal_async(
-        self, prompt: str, response_model: Type[BaseModel], **kwargs: Any
+            self, prompt: str, response_model: Type[BaseModel], **kwargs: Any
     ) -> Tuple[str, Optional[str]]:
         """Asynchronous internal method for OpenAI JSON generation.
 
@@ -436,12 +443,12 @@ class OpenAILLM(BaseLLM):
         return choices[0].message.content, mode_used
 
     def generate_stream(
-        self,
-        prompt: str,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
-        stop: Optional[List[str]] = None,
-        **kwargs: Any,
+            self,
+            prompt: str,
+            temperature: Optional[float] = None,
+            max_tokens: Optional[int] = None,
+            stop: Optional[List[str]] = None,
+            **kwargs: Any,
     ) -> Iterator[str]:
         """Generates a stream of text chunks using the configured OpenAI model.
 
@@ -475,12 +482,12 @@ class OpenAILLM(BaseLLM):
                     yield delta.content
 
     async def generate_stream_async(
-        self,
-        prompt: str,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
-        stop: Optional[List[str]] = None,
-        **kwargs: Any,
+            self,
+            prompt: str,
+            temperature: Optional[float] = None,
+            max_tokens: Optional[int] = None,
+            stop: Optional[List[str]] = None,
+            **kwargs: Any,
     ) -> AsyncIterator[str]:
         """Asynchronously generates a stream of text chunks using OpenAI.
 

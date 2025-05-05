@@ -487,11 +487,8 @@ class GraphOfThoughts:
         self,
         llm: BaseLLM,
         embedder: Optional[BaseEmbedder] = None,
-        # Removed params like max_iters, num_branches, beam_width - these are now part of GoO/Op params
         final_answer_format: Literal["text", "json"] = "text",
-        # Define default prompts here
         prompts: Optional[Dict[str, str]] = None,
-        # Global LLM parameters can be set here
         max_tokens: Optional[int] = None,
         seed: Optional[int] = None,
     ) -> None:
@@ -515,7 +512,6 @@ class GraphOfThoughts:
 
     def _get_default_prompts(self) -> Dict[str, str]:
         """Provides default prompt templates."""
-        # Define default prompts similar to the original __init__
         return {
             "expand": (
                 "Generate {k} distinct reasoning steps or thoughts to continue "
@@ -556,15 +552,15 @@ class GraphOfThoughts:
             The similar node if found above the threshold, otherwise None.
         """
         if not self.embedder or new_node.embed is None:
-            # logger.debug(f"Skipping similarity check for node {new_node.id} (no embedder or embedding).")
+            logger.debug(f"Skipping similarity check for node {new_node.id} (no embedder or embedding).")
             return None
 
         new_norm = np.linalg.norm(new_node.embed)
-        if new_norm < 1e-9:  # Use epsilon for float comparison
-            # logger.debug(f"Skipping similarity check for node {new_node.id} (zero norm embedding).")
+        if new_norm < 1e-9:
+            logger.debug(f"Skipping similarity check for node {new_node.id} (zero norm embedding).")
             return None
 
-        # logger.debug(f"Checking similarity for node {new_node.id} against {len(nodes_to_check)} nodes.")
+        logger.debug(f"Checking similarity for node {new_node.id} against {len(nodes_to_check)} nodes.")
         for other in nodes_to_check:
             if other.id == new_node.id or other.embed is None:
                 continue
@@ -574,7 +570,6 @@ class GraphOfThoughts:
                 continue
 
             try:
-                # Ensure embeddings are 1D arrays for dot product
                 embed1 = new_node.embed.ravel()
                 embed2 = other.embed.ravel()
                 if embed1.shape != embed2.shape:
@@ -603,7 +598,6 @@ class GraphOfThoughts:
         elif op_name == "Aggregate":
             return AggregateOp(**params)
         elif op_name == "Improve":
-            # return ImproveOp(**params) # Assuming ImproveOp is implemented
             raise NotImplementedError(f"Operation '{op_name}' not implemented yet.")
         elif op_name == "Score":
             return ScoreOp(**params)
@@ -616,7 +610,7 @@ class GraphOfThoughts:
     async def run_async(
         self,
         question: str,
-        graph_of_operations: List[Tuple[str, Dict]],  # Define the GoO structure
+        graph_of_operations: List[Tuple[str, Dict]],
         semaphore: Optional[asyncio.Semaphore] = None,
         **kwargs: Any,
     ) -> str:
