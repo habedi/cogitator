@@ -1,9 +1,10 @@
-"""Implements the Tree of Thoughts (ToT) reasoning strategy."""
+"""Implements the Tree of Thoughts (ToT) framework."""
 
 import asyncio
 import logging
 import math
-from typing import Any, List, Optional
+import random
+from typing import Any, AsyncIterator, Iterator, List, Optional
 
 from ..model import BaseLLM
 from ..schemas import EvaluationResult, ThoughtExpansion
@@ -112,6 +113,9 @@ class TreeOfThoughts:
         self.eval_prompt = eval_prompt
         self.max_tokens = max_tokens
         self.seed = seed
+        # Set random seed for reproducibility if provided
+        if self.seed is not None:
+            random.seed(self.seed)
 
     def _select(self, node: _Node) -> _Node:
         """Selects a leaf node for expansion using the UCB1 algorithm.
@@ -128,6 +132,8 @@ class TreeOfThoughts:
         while not node.is_leaf():
             total_visits = sum(child.visits for child in node.children)
             if total_visits == 0:
+                # If no child has been visited, explore the first one first
+                # or handle this case based on desired exploration strategy
                 return node.children[0] if node.children else node
 
             sqrt_total = math.sqrt(total_visits)
@@ -135,6 +141,8 @@ class TreeOfThoughts:
                 child.value() + self.c_puct * child.prior * (sqrt_total / (1 + child.visits))
                 for child in node.children
             ]
+            # Find the index of the maximum UCB score
+            # In case of ties, max() method's default behavior is used (typically returns the first max)
             best_idx = ucb_scores.index(max(ucb_scores))
             node = node.children[best_idx]
         return node
@@ -154,11 +162,18 @@ class TreeOfThoughts:
         prompt = self.expand_prompt.format(k=self.num_branches, ctx=ctx, question=question)
         try:
             local_kwargs = kwargs.copy()
+            # Modify seed based on simulation/depth if needed for diversity
+            expand_seed = local_kwargs.pop("seed", self.seed)
+            if expand_seed is not None:
+                # Example: vary seed based on node depth or simulation count if desired
+                # expand_seed += len(node.steps)
+                pass  # Keep base seed or implement variation logic
+
             generated = self.llm.generate_json(
                 prompt,
                 response_model=ThoughtExpansion,
                 max_tokens=local_kwargs.pop("max_tokens", self.max_tokens),
-                seed=local_kwargs.pop("seed", self.seed),
+                seed=expand_seed,
                 **local_kwargs,
             )
             if not isinstance(generated, ThoughtExpansion):
@@ -191,10 +206,11 @@ class TreeOfThoughts:
         prompt = self.expand_prompt.format(k=self.num_branches, ctx=ctx, question=question)
         try:
             local_kwargs = kwargs.copy()
+            expand_seed = local_kwargs.pop("seed", self.seed)
             gen_args = {
                 "response_model": ThoughtExpansion,
                 "max_tokens": local_kwargs.pop("max_tokens", self.max_tokens),
-                "seed": local_kwargs.pop("seed", self.seed),
+                "seed": expand_seed,
                 **local_kwargs,
             }
             if semaphore:
@@ -236,11 +252,13 @@ class TreeOfThoughts:
         prompt = self.eval_prompt.format(question=question, steps=steps_str)
         try:
             local_kwargs = kwargs.copy()
+            eval_seed = local_kwargs.pop("seed", self.seed)
+            # Optional seed variation logic here
             result = self.llm.generate_json(
                 prompt,
                 response_model=EvaluationResult,
                 max_tokens=local_kwargs.pop("max_tokens", self.max_tokens),
-                seed=local_kwargs.pop("seed", self.seed),
+                seed=eval_seed,
                 **local_kwargs,
             )
             if isinstance(result, EvaluationResult):
@@ -270,10 +288,11 @@ class TreeOfThoughts:
         prompt = self.eval_prompt.format(question=question, steps=steps_str)
         try:
             local_kwargs = kwargs.copy()
+            eval_seed = local_kwargs.pop("seed", self.seed)
             gen_args = {
                 "response_model": EvaluationResult,
                 "max_tokens": local_kwargs.pop("max_tokens", self.max_tokens),
-                "seed": local_kwargs.pop("seed", self.seed),
+                "seed": eval_seed,
                 **local_kwargs,
             }
             if semaphore:
@@ -306,9 +325,15 @@ class TreeOfThoughts:
             cur = cur.parent
 
     def run(self, question: str, **kwargs: Any) -> str:
-        """Executes the Tree of Thoughts search process.
+        """Executes the Tree of Thoughts search process using MCTS-like steps.
 
-        Performs `sims` MCTS simulations (select, expand, evaluate, backpropagate).
+        Performs `sims` simulations. Each simulation involves:
+        1. Selection: Traverse the tree using UCB1 to find a promising leaf node.
+        2. Expansion: If the leaf is not at max depth, generate potential next thoughts.
+        3. Evaluation: Evaluate a randomly chosen newly generated child node (if expansion occurred)
+           or the selected leaf node itself (if terminal or expansion failed).
+        4. Backpropagation: Update visit counts and value sums up the tree from the evaluated node.
+
         After simulations, selects the most promising path (based on visits and value)
         and generates the final answer using the steps from that path as context.
 
@@ -329,7 +354,8 @@ class TreeOfThoughts:
             if len(leaf.steps) < self.max_depth:
                 self._expand(leaf, question, **kwargs)
                 if leaf.children:
-                    to_eval = leaf.children[0]
+                    # Evaluate a randomly chosen new child node
+                    to_eval = random.choice(leaf.children)
 
             value = self._evaluate(to_eval, question, **kwargs)
             self._backpropagate(to_eval, value)
@@ -347,10 +373,12 @@ class TreeOfThoughts:
 
         try:
             local_kwargs = kwargs.copy()
+            final_seed = local_kwargs.pop("seed", self.seed)
+            # Optional: Use a different seed for the final generation
             return self.llm.generate(
                 final_prompt,
                 max_tokens=local_kwargs.pop("max_tokens", self.max_tokens),
-                seed=local_kwargs.pop("seed", self.seed),
+                seed=final_seed,
                 **local_kwargs,
             ).strip()
         except Exception as e:
@@ -360,10 +388,10 @@ class TreeOfThoughts:
     async def run_async(
         self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
     ) -> str:
-        """Asynchronously executes the Tree of Thoughts search process.
+        """Asynchronously executes the Tree of Thoughts search process using MCTS-like steps.
 
         Similar to `run`, but performs expansion and evaluation steps concurrently
-        using asyncio.
+        using asyncio. Evaluates a randomly chosen child after expansion.
 
         Args:
             question: The question to solve.
@@ -379,14 +407,15 @@ class TreeOfThoughts:
             logger.debug("Async Simulation %d/%d", sim + 1, self.sims)
             leaf = self._select(root)
 
-            eval_node = leaf
+            to_eval = leaf
             if len(leaf.steps) < self.max_depth:
                 await self._expand_async(leaf, question, semaphore, **kwargs)
                 if leaf.children:
-                    eval_node = leaf.children[0]
+                    # Evaluate a randomly chosen new child node
+                    to_eval = random.choice(leaf.children)
 
-            value = await self._evaluate_async(eval_node, question, semaphore, **kwargs)
-            self._backpropagate(eval_node, value)
+            value = await self._evaluate_async(to_eval, question, semaphore, **kwargs)
+            self._backpropagate(to_eval, value)
 
         if not root.children:
             logger.warning("No thoughts were generated async; answering directly.")
@@ -401,9 +430,11 @@ class TreeOfThoughts:
 
         try:
             local_kwargs = kwargs.copy()
+            final_seed = local_kwargs.pop("seed", self.seed)
+            # Optional: Use a different seed for the final generation
             gen_args = {
                 "max_tokens": local_kwargs.pop("max_tokens", self.max_tokens),
-                "seed": local_kwargs.pop("seed", self.seed),
+                "seed": final_seed,
                 **local_kwargs,
             }
             if semaphore:
@@ -414,3 +445,12 @@ class TreeOfThoughts:
         except Exception as e:
             logger.error("Final async answer generation failed: %s", e, exc_info=True)
             return "Error generating final async answer."
+
+    # Consider adding stream methods if applicable, though ToT structure makes streaming complex.
+    def run_stream(self, prompt: str) -> Iterator[str]:
+        """Streaming is not directly supported by the standard ToT search."""
+        raise NotImplementedError("Streaming not supported for TreeOfThoughts.")
+
+    async def run_stream_async(self, prompt: str) -> AsyncIterator[str]:
+        """Streaming is not directly supported by the standard ToT search."""
+        raise NotImplementedError("Streaming not supported for TreeOfThoughts.")

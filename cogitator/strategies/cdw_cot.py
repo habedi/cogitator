@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import time
-from typing import Any, List, Optional, Tuple, Coroutine
+from typing import Any, List, Optional, Tuple
 
 import numpy as np
 
