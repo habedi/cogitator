@@ -34,11 +34,12 @@ applications.
 
 ### Features
 
-- Provides unified sync/async API for CoT strategies
-- Supports using OpenAI and Ollama as LLM providers
-- Supports structured JSON model output with Pydantic validation
-- Includes a customizable benchmarking framework (see [benches](benches))
-- Includes implementations of popular CoT strategies and frameworks like
+* Provides unified sync/async API for CoT strategies
+* Supports using OpenAI and Ollama as LLM providers 
+* Easy to extend and add new LLM providers and CoT strategies
+* Supports structured model output with Pydantic validation
+* Includes a customizable benchmarking framework (see [benches](benches))
+* Includes implementations of popular CoT strategies and frameworks like
     - [Self-Consistency CoT (ICLR 2023)](https://arxiv.org/abs/2203.11171)
     - [Automatic CoT (ICLR 2023)](https://arxiv.org/abs/2210.03493)
     - [Least-to-Most Prompting (ICLR 2023)](https://arxiv.org/abs/2205.10625)
@@ -59,7 +60,7 @@ pip install cogitator
 Or, if you want to install from the latest version with examples and benchmarks included
 
 ```bash
-git clone --depth=1 https://github.com/habedi/cogitator && cd cogitator
+git clone https://github.com/habedi/cogitator && cd cogitator
 
 # Set up Python environment
 pip install poetry

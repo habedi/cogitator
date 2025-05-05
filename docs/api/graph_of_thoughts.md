@@ -1,6 +1,6 @@
-# cogitator.strategies.graph_of_thoughts
+# Graph of Thoughts
 
-Implementation of the Graph of Thoughts (GoT) prompting framework.
+Implementation of the graph of thoughts CoT framework from [this paper](https://arxiv.org/abs/2308.09687).
 
 ::: cogitator.strategies.graph_of_thoughts.GraphOfThoughts
     options:

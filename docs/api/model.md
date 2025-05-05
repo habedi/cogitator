@@ -1,4 +1,4 @@
-# cogitator.model.base
+# LLM Provider Interface
 
 This module defines the abstract base class for all LLM providers.
 

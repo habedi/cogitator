@@ -1,4 +1,4 @@
-# Contributing
+## Contributing
 
 Thank you for considering contributing to Cogitator!
 We welcome contributions from the community, whether it is code, documentation, or feedback.

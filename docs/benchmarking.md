@@ -1,9 +1,9 @@
-# Benchmarking Framework
+## Benchmarking Framework
 
 Cogitator includes a framework for running benchmarks to compare the performance of different Chain-of-Thought methods
 on various datasets.
 
-## Overview
+### Overview
 
 The framework consists of two main scripts:
 
@@ -14,12 +14,12 @@ The framework consists of two main scripts:
    final answers from the raw outputs (using either heuristics or an LLM), compares them to gold answers, and calculates
    accuracy metrics for each method.
 
-## Configuration
+### Configuration
 
 Benchmarks are configured using the `benches.yml` file located in the project root, which can be overridden by
 command-line arguments passed to the scripts.
 
-## How to Run
+### How to Run
 
 Detailed instructions on how to configure and run the benchmarks are available in the benchmarking README
 ([`benches/README.md`](https://github.com/habedi/cogitator/blob/main/benches/README.md)).

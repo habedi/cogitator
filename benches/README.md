@@ -126,11 +126,10 @@ the command line.
 
 ### Dependencies
 
-To run the benchmarks, you might want to install the development dependencies along with the main package.
+To run the benchmarks, you might want to install the development dependencies along with Cogitator itself.
 
 ```bash
-pip install cogitator[dev]
-# Or poetry install --with dev
+poetry install --with dev
 ```
 
 Additionally, any model used in the benchmarks must be available.
@@ -158,9 +157,12 @@ poetry run python benches/evaluate.py --input-file my_openai_results.jsonl --ext
 
 ## Performance Metric
 
-Accuracy is the primary metric reported by the `evaluate.py` script. It is defined as the percentage of correctly
-answered questions out of the total number of successfully extracted answers for a given CoT strategy.
-Failed extractions are reported separately.
+Accuracy is the primary metric reported by the `evaluate.py` script.
+It is defined as the percentage of correctly answered questions out of the total number of successfully extracted answers for a given CoT strategy.
+
+> [!NOTE]
+> If there are extraction errors (e.g., the extractor fails to extract an answer), those questions are excluded from the accuracy calculation.
+> This may make it harder to objectively compare different strategies if there are failures in the extraction process.
 
 ## Datasets
 

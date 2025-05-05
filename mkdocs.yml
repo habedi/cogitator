@@ -4,7 +4,7 @@ repo_url: https://github.com/habedi/cogitator
 repo_name: habedi/cogitator
 
 theme:
-  name: readthedocs
+  name: material
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -21,6 +21,9 @@ theme:
     - navigation.tabs
     - navigation.top
     - navigation.indexes
+    - navigation.expand
+    - content.code.select
+    - content.code.annotate
 
 plugins:
   - search
@@ -47,7 +50,7 @@ nav:
           - LeastToMost: api/least_to_most.md
           - SelfConsistency: api/sc_cot.md
           - TreeOfThoughts: api/tree_of_thoughts.md
-  - Benchmarking: benchmarks.md
+  - Benchmarking: benchmarking.md
   - Contributing: contributing.md
 
 markdown_extensions:

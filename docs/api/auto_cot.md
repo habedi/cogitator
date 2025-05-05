@@ -1,6 +1,6 @@
-# cogitator.strategies.auto_cot
+# Automatic Chain-of-Thought
 
-Implementation of the Automatic Chain-of-Thought (AutoCoT) prompting strategy.
+Implementation of the automatic chain-of-thought (CoT) prompting strategy from [this paper](https://arxiv.org/abs/2210.03493).
 
 ::: cogitator.strategies.auto_cot.AutoCoT
     options:

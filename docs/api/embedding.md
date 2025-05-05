@@ -1,7 +1,6 @@
-# cogitator.embedding
+# Text Embedding Module
 
-This module provides abstractions and implementations for text embedding models, used by strategies like AutoCoT and CDWCoT to
-represent questions or thoughts numerically.
+This module provides abstractions and implementations for text embedding models.
 
 ::: cogitator.embedding.BaseEmbedder
     options:

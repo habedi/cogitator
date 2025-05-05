@@ -1,4 +1,4 @@
-# cogitator.model.openai
+# OpenAI LLM Implementation
 
 Implementation of the BaseLLM interface for OpenAI models.
 

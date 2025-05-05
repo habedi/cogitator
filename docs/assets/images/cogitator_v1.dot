@@ -1,0 +1,92 @@
+digraph CogitatorWorkflow {
+    fontname = "Helvetica,Arial,sans-serif"
+    layout = dot
+    rankdir = TB // Top-to-Bottom workflow layout
+    node [
+    fontname = "Helvetica,Arial,sans-serif",
+    shape = box,
+    style = "filled,rounded",
+    color = "grey",
+    fillcolor = "white",
+    penwidth = 2
+    ]
+    edge [
+    fontname = "Helvetica,Arial,sans-serif",
+    color = "black"
+    ]
+
+    // Cluster: User Inputs
+    subgraph cluster_input {
+    label = "Inputs"
+    style = "dashed"
+    color = "lightgrey"
+    question [label = "Question / Prompt", fillcolor = "lightyellow"]
+    strategy_choice [label = "Strategy Choice\n(e.g., SC, LtM, GoT, AutoCoT)", fillcolor = "lightyellow"]
+    llm_choice [label = "LLM Choice\n(Provider, Model Name)", fillcolor = "lightyellow"]
+    training_data [label = "Training Data\n(Optional: Questions, Answers)", fillcolor = "lightyellow", shape = note]
+    }
+
+    // Cluster: Cogitator Library Core Components
+    subgraph cluster_core {
+    label = "Cogitator Library"
+    style = "dashed"
+    color = "lightgrey"
+    strategy [label = "Selected CoT Strategy\n(e.g., AutoCoT instance)", fillcolor = "lightblue"]
+    llm_interface [label = "LLM Interface\n(BaseLLM: OpenAI/Ollama)", fillcolor = "lightblue"]
+    schemas [label = "Pydantic Schemas\n(Structured Output Validation)", fillcolor = "lightgrey", shape = component]
+    embedding [label = "Embedding Model\n(Optional Usage)", fillcolor = "lightblue", shape = component]
+    clustering [label = "Clustering Algorithm\n(Optional Usage)", fillcolor = "lightblue", shape = component]
+    extraction [label = "Answer Extraction Logic\n(Heuristic / LLM-based)", fillcolor = "lightblue", shape = component]
+    }
+
+    // Cluster: External Dependencies / Services
+     subgraph cluster_external {
+    label = "External Services / Models"
+    style = "dashed"
+    color = "lightgrey"
+    llm_backend [label = "LLM Backend\n(OpenAI API / Ollama Server)", fillcolor = "lightpink"]
+    embedding_backend [label = "Embedding Backend\n(e.g., Sentence Transformers Lib)", fillcolor = "lightpink", shape = cylinder] // Representing the underlying model/lib
+    }
+
+    // Cluster: Final Output
+   subgraph cluster_output {
+    label = "Output"
+    style = "dashed"
+    color = "lightgrey"
+    final_answer [label = "Final Answer / Result", fillcolor = "lightgreen"]
+    }
+
+    // --- Edges Defining the Flow ---
+
+    // Inputs to Initialization
+    question -> strategy [label = "is main input to"]
+    strategy_choice -> strategy [label = "determines instance of"]
+    llm_choice -> llm_interface [label = "configures"]
+    training_data -> strategy [label = "used by some for fit/train\n(e.g., AutoCoT, CDWCoT)", style = dashed]
+
+    // Strategy Orchestration
+    strategy -> llm_interface [label = "makes calls via"]
+    strategy -> schemas [label = "uses for JSON modes\n(LtM, ToT, GoT, SC, etc.)", style = dashed]
+    strategy -> embedding [label = "uses sometimes\n(AutoCoT, CDWCoT, GoT)", style = dashed]
+    strategy -> clustering [label = "uses sometimes\n(AutoCoT, CDWCoT)", style = dashed]
+    strategy -> extraction [label = "uses sometimes\n(SC, LtM, GoT)", style = dashed]
+
+    // LLM Interaction
+    llm_interface -> llm_backend [label = "communicates with"]
+    llm_backend -> llm_interface [label = "returns generation to"]
+    llm_interface -> strategy [label = "provides results to"]
+
+    // Embedding Interaction (Optional Path)
+    embedding -> embedding_backend [label = "wraps / uses"]
+    embedding_backend -> embedding [label = "provides embeddings"]
+
+    // Extraction Interaction (Optional Path)
+    extraction -> llm_interface [label = "can call LLM for extraction", style = dotted]
+
+    // Final Output
+    strategy -> final_answer [label = "produces"]
+
+    // Optional: Ranking hints if needed (often not necessary with TB layout)
+ // { rank=same; question; strategy_choice; llm_choice; training_data }
+ // { rank=same; llm_backend; embedding_backend }
+}

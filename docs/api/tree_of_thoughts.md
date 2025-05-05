@@ -1,6 +1,6 @@
-# cogitator.strategies.tree_of_thoughts
+# Tree of Thoughts
 
-Implementation of the Tree of Thoughts (ToT) prompting framework.
+Implementation of the tree of thoughts CoT framework from [this paper](https://arxiv.org/abs/2305.10601).
 
 ::: cogitator.strategies.tree_of_thoughts.TreeOfThoughts
     options:

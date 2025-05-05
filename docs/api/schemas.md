@@ -1,7 +1,6 @@
-# cogitator.schemas
+# Schemas for Structured Data
 
-This module defines Pydantic models used for structuring and validating data, especially for interactions with LLMs that
-involve structured outputs.
+This module defines Pydantic models used for structuring and validating intermediate and final outputs from LLMs.
 
 ::: cogitator.schemas.LTMDecomposition
     options:

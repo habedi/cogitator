@@ -1,6 +1,6 @@
-# cogitator.strategies.sc_cot
+# Self-Consistency Prompting
 
-Implementation of the Self-Consistency (SC-CoT) prompting strategy.
+Implementation of the self-consistency prompting strategy from [this paper](https://arxiv.org/abs/2003.04933).
 
 ::: cogitator.strategies.sc_cot.SelfConsistency
     options:
