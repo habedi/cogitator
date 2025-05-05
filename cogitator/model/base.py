@@ -16,6 +16,24 @@ logger = logging.getLogger(__name__)
 class BaseLLM(ABC):
     """Abstract base class defining the interface for LLM providers."""
 
+    def __init__(self) -> None:
+        """Initializes token count storage."""
+        self._last_prompt_tokens: Optional[int] = None
+        self._last_completion_tokens: Optional[int] = None
+
+    def get_last_prompt_tokens(self) -> Optional[int]:
+        """Returns the token count for the last prompt, if available."""
+        return self._last_prompt_tokens
+
+    def get_last_completion_tokens(self) -> Optional[int]:
+        """Returns the token count for the last completion, if available."""
+        return self._last_completion_tokens
+
+    def _reset_token_counts(self) -> None:
+        """Resets the stored token counts."""
+        self._last_prompt_tokens = None
+        self._last_completion_tokens = None
+
     @abstractmethod
     def generate(self, prompt: str, **kwargs: Any) -> str:
         """Generates a single text completion for the given prompt.
@@ -89,6 +107,7 @@ class BaseLLM(ABC):
 
         This method handles the actual API call for JSON generation, potentially
         using provider-specific features like JSON mode or schema enforcement.
+        It should also handle updating the internal token counts.
 
         Args:
             prompt: The input prompt, potentially instructing JSON format.
@@ -112,6 +131,8 @@ class BaseLLM(ABC):
         self, prompt: str, response_model: Type[BaseModel], **kwargs: Any
     ) -> Tuple[str, Optional[str]]:
         """Asynchronous internal method to generate raw JSON output string from the LLM.
+
+        It should also handle updating the internal token counts.
 
         Args:
             prompt: The input prompt, potentially instructing JSON format.
@@ -194,7 +215,7 @@ class BaseLLM(ABC):
         """Generates a response and parses it into a Pydantic model instance.
 
         Uses `_generate_json_internal` and attempts to parse the result.
-        Retries on validation or decoding errors.
+        Retries on validation or decoding errors. Also updates internal token counts.
 
         Args:
             prompt: The input prompt, often instructing the LLM to respond in JSON.
@@ -213,12 +234,14 @@ class BaseLLM(ABC):
         last_error = None
         temp = kwargs.pop("temperature", 0.1)
         json_kwargs = {**kwargs, "temperature": temp}
+        self._reset_token_counts()  # Reset before attempts
 
         for attempt in range(retries + 1):
             raw = ""
             block = ""
             mode_used = None
             try:
+                # _generate_json_internal is responsible for updating token counts
                 raw, mode_used = self._generate_json_internal(prompt, response_model, **json_kwargs)
 
                 if mode_used in ["json_schema", "json_object", "ollama_schema_format"]:
@@ -228,7 +251,9 @@ class BaseLLM(ABC):
                     # Fallback to extracting JSON block heuristically
                     block = self._extract_json_block(raw)
 
-                return response_model.model_validate_json(block.strip())
+                validated_model = response_model.model_validate_json(block.strip())
+                # Token counts should have been set by _generate_json_internal
+                return validated_model
             except (json.JSONDecodeError, ValidationError) as ve:
                 last_error = ve
                 logger.warning(
@@ -240,6 +265,7 @@ class BaseLLM(ABC):
                     block,
                     raw,
                 )
+                self._reset_token_counts()  # Reset counts on error
             except Exception as e:
                 last_error = e
                 logger.error(
@@ -250,12 +276,15 @@ class BaseLLM(ABC):
                     e,
                     exc_info=True,
                 )
+                self._reset_token_counts()  # Reset counts on error
 
             if attempt < retries:
                 sleep_time = 2**attempt
                 logger.info(f"Retrying JSON generation in {sleep_time} seconds...")
                 time.sleep(sleep_time)
+                self._reset_token_counts()  # Reset before retry
 
+        # If loop finishes without success
         raise RuntimeError(
             f"generate_json failed after {retries + 1} attempts. Last error: {type(last_error).__name__}: {last_error}"
         )
@@ -266,7 +295,7 @@ class BaseLLM(ABC):
         """Asynchronously generates a response and parses it into a Pydantic model instance.
 
         Uses `_generate_json_internal_async` and attempts to parse the result.
-        Retries on validation or decoding errors.
+        Retries on validation or decoding errors. Also updates internal token counts.
 
         Args:
             prompt: The input prompt, often instructing the LLM to respond in JSON.
@@ -285,12 +314,14 @@ class BaseLLM(ABC):
         last_error = None
         temp = kwargs.pop("temperature", 0.1)
         json_kwargs = {**kwargs, "temperature": temp}
+        self._reset_token_counts()  # Reset before attempts
 
         for attempt in range(retries + 1):
             raw = ""
             block = ""
             mode_used = None
             try:
+                # _generate_json_internal_async is responsible for updating token counts
                 raw, mode_used = await self._generate_json_internal_async(
                     prompt, response_model, **json_kwargs
                 )
@@ -300,7 +331,9 @@ class BaseLLM(ABC):
                 else:
                     block = self._extract_json_block(raw)
 
-                return response_model.model_validate_json(block.strip())
+                validated_model = response_model.model_validate_json(block.strip())
+                # Token counts should have been set by _generate_json_internal_async
+                return validated_model
             except (json.JSONDecodeError, ValidationError) as ve:
                 last_error = ve
                 logger.warning(
@@ -312,6 +345,7 @@ class BaseLLM(ABC):
                     block,
                     raw,
                 )
+                self._reset_token_counts()  # Reset counts on error
             except Exception as e:
                 last_error = e
                 logger.error(
@@ -322,12 +356,15 @@ class BaseLLM(ABC):
                     e,
                     exc_info=True,
                 )
+                self._reset_token_counts()  # Reset counts on error
 
             if attempt < retries:
                 sleep_time = 2**attempt
                 logger.info(f"Retrying async JSON generation in {sleep_time} seconds...")
                 await asyncio.sleep(sleep_time)
+                self._reset_token_counts()  # Reset before retry
 
+        # If loop finishes without success
         raise RuntimeError(
             f"generate_json_async failed after {retries + 1} attempts. Last error: {type(last_error).__name__}: {last_error}"
         )

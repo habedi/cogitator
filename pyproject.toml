@@ -29,6 +29,7 @@ openai = "^1.76.2"
 ollama = "^0.4.8"
 pydantic = "^2.11.4"
 sentence-transformers = "^4.1.0"
+tiktoken = "^0.9.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.1"

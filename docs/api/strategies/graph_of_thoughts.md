@@ -1,8 +1,8 @@
 # Graph of Thoughts Framework
 
-Implementation of the Graph of Thoughts (GoT) reasoning framework, inspired by [this paper](https://arxiv.org/abs/2308.09687).
+An implementation of the Graph of Thoughts (GoT) reasoning framework from [this paper](https://arxiv.org/abs/2308.09687).
 
-This implementation represents the reasoning process as a graph where nodes are thoughts and edges represent transformations.
+The implementation represents the reasoning process as a graph where nodes are thoughts and edges represent transformations.
 The flow of reasoning is controlled by a **Graph of Operations (GoO)**.
 
 ## Defining the Graph of Operations (GoO)

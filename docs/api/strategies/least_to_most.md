@@ -1,6 +1,6 @@
 # Least-to-Most Prompting
 
-Implementation of the least-to-most prompting strategy from [this paper](https://arxiv.org/abs/2205.10625).
+An implementation of the least-to-most prompting strategy from [this paper](https://arxiv.org/abs/2205.10625).
 
 ::: cogitator.strategies.least_to_most.LeastToMost
     options:

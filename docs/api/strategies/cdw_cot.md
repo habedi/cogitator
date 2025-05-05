@@ -1,6 +1,6 @@
 # Clustered Distance-Weighted Chain-of-Thought
 
-Implementation of the clustered distance-weighted CoT framework from [this paper](https://arxiv.org/abs/2501.12226).
+An implementation of the clustered distance-weighted CoT framework from [this paper](https://arxiv.org/abs/2501.12226).
 
 ::: cogitator.strategies.cdw_cot.CDWCoT
     options:

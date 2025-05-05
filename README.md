@@ -17,7 +17,7 @@
 [![Docs](https://img.shields.io/badge/docs-latest-8ca0d7?style=flat&labelColor=333333&logo=readthedocs&logoColor=white)](https://habedi.github.io/cogitator)
 [![DOI](https://img.shields.io/badge/doi-10.5281/zenodo.15331821-6f42c1.svg?style=flat&labelColor=333333&logo=zenodo&logoColor=white)](https://doi.org/10.5281/zenodo.15331821)
 
-A Python toolkit for chain-of-thought prompting
+A Python Toolkit for Chain-of-Thought Prompting
 
 </div>
 
@@ -36,7 +36,6 @@ applications.
 
 * Provides unified sync/async API for CoT strategies
 * Supports using OpenAI and Ollama as LLM providers
-* Easy to extend and add new LLM providers and CoT strategies
 * Supports structured model output with Pydantic validation
 * Includes a customizable benchmarking framework (see [benches](benches))
 * Includes implementations of popular CoT strategies and frameworks like
@@ -145,11 +144,9 @@ If you use this project in your research, please consider citing using the follo
 ```bibtex
 @software{abedi_cogitator_2025,
     author = {Abedi Firouzjaei, Hassan},
-    title = {{Cogitator: A Python toolkit for chain-of-thought prompting}},
-    month = may,
-    year = 2025,
+    title = {{Cogitator: A Python Toolkit for Chain-of-Thought Prompting}},
+    year = {2025--},
     publisher = {Zenodo},
-    version = {0.1.0b1},
     doi = {10.5281/zenodo.15331821},
     url = {https://github.com/habedi/cogitator}
 }

@@ -87,8 +87,8 @@ def test_extract_json_block(mock_ollama_clients):
         ("gpt-4o-mini", "json_schema", True, False),
         ("gpt-4-turbo", "json_object", True, None),
         ("gpt-3.5-turbo-1106", "json_object", True, None),
-        ("gpt-3.5-turbo-0613", "json_schema", True, None),
-        ("unknown-model", "json_schema", True, None),
+        ("gpt-3.5-turbo-0613", "json_schema", True, False),
+        ("unknown-model", "json_schema", True, False),
     ])
 def test_openai_prepare_api_params_json_modes(mock_openai_clients, model_name, expected_mode,
                                               expect_format_present, expect_additional_props):
@@ -110,8 +110,10 @@ def test_openai_prepare_api_params_json_modes(mock_openai_clients, model_name, e
     else:
         assert "response_format" not in params
         assert expect_additional_props is None
-
-    assert mode == expected_mode
+    if expect_format_present:
+        assert mode == expected_mode
+    else:
+        assert mode is None
 
 
 def test_openai_prepare_api_params_no_schema_json_mode(mock_openai_clients):

@@ -6,6 +6,7 @@ from typing import Any, AsyncIterator, Iterator, List, Optional, Tuple, Type
 from ollama import AsyncClient, Client
 from pydantic import BaseModel
 
+from ..utils import approx_token_length  # Add import
 from .base import BaseLLM
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ class OllamaLLM(BaseLLM):
 
     def __init__(
         self,
-        model: str = "gemma3:4b",
+        model: str = "gemma3:4b",  # Changed default
         temperature: float = 0.7,
         max_tokens: int = 1024,
         stop: Optional[List[str]] = None,
@@ -37,6 +38,7 @@ class OllamaLLM(BaseLLM):
             ollama_host: The host address of the Ollama server (e.g., "http://localhost:11434").
                          If None, the default host used by the `ollama` library is used.
         """
+        super().__init__()  # Call BaseLLM init
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -106,9 +108,33 @@ class OllamaLLM(BaseLLM):
                 logger.warning(
                     f"Could not convert seed value {opts['seed']} to int. Setting seed to None."
                 )
-                opts["seed"] = None
+                # Don't set seed to None, remove it if invalid
+                opts.pop("seed", None)
 
         return {k: v for k, v in opts.items() if v is not None}
+
+    def _update_token_counts(self, prompt: str, resp: Any, completion_text: str) -> None:
+        """Updates token counts using API response or approximation."""
+        # Ollama response structure for non-streaming chat usually contains usage keys
+        if isinstance(resp, dict):
+            prompt_tokens = resp.get("prompt_eval_count")  # Input tokens
+            completion_tokens = resp.get("eval_count")  # Output tokens
+            if prompt_tokens is not None and completion_tokens is not None:
+                try:
+                    self._last_prompt_tokens = int(prompt_tokens)
+                    self._last_completion_tokens = int(completion_tokens)
+                    logger.debug(
+                        f"Got token usage from Ollama API: P={self._last_prompt_tokens}, C={self._last_completion_tokens}"
+                    )
+                    return  # Use API values if available
+                except (ValueError, TypeError):
+                    logger.warning("Could not parse token counts from Ollama API response.")
+        # Fallback to approximation if API counts are not available or parsing failed
+        self._last_prompt_tokens = approx_token_length(prompt)
+        self._last_completion_tokens = approx_token_length(completion_text)
+        logger.debug(
+            f"Estimated token usage via approx_token_length: P={self._last_prompt_tokens}, C={self._last_completion_tokens}"
+        )
 
     def generate(self, prompt: str, **kwargs: Any) -> str:
         """Generates a single text completion using the configured Ollama model.
@@ -124,13 +150,17 @@ class OllamaLLM(BaseLLM):
         Raises:
             RuntimeError: If the Ollama API call fails.
         """
+        self._reset_token_counts()
         opts = self._prepare_options(**kwargs)
         try:
             resp = self._client.chat(
                 model=self.model, messages=[{"role": "user", "content": prompt}], options=opts
             )
-            return self._strip_content(resp)
+            content = self._strip_content(resp)
+            self._update_token_counts(prompt, resp, content)  # Update counts
+            return content
         except Exception as e:
+            self._reset_token_counts()  # Reset on error
             logger.error(f"Ollama generate failed for model {self.model}: {e}", exc_info=True)
             raise RuntimeError(f"Ollama generate failed: {e}") from e
 
@@ -147,13 +177,17 @@ class OllamaLLM(BaseLLM):
         Raises:
             RuntimeError: If the asynchronous Ollama API call fails.
         """
+        self._reset_token_counts()
         opts = self._prepare_options(**kwargs)
         try:
             resp = await self._async_client.chat(
                 model=self.model, messages=[{"role": "user", "content": prompt}], options=opts
             )
-            return self._strip_content(resp)
+            content = self._strip_content(resp)
+            self._update_token_counts(prompt, resp, content)  # Update counts
+            return content
         except Exception as e:
+            self._reset_token_counts()  # Reset on error
             logger.error(f"Ollama async generate failed for model {self.model}: {e}", exc_info=True)
             raise RuntimeError(f"Ollama async generate failed: {e}") from e
 
@@ -171,6 +205,8 @@ class OllamaLLM(BaseLLM):
                 - The Ollama options dictionary.
                 - The JSON schema derived from the response_model.
         """
+        # Note: Ollama's `format="json"` doesn't use the schema directly like OpenAI's structured output,
+        # but we calculate it anyway in case future versions do or for consistency.
         schema = response_model.model_json_schema()
         opts = {
             "temperature": kwargs.pop("temperature", 0.1),
@@ -182,6 +218,13 @@ class OllamaLLM(BaseLLM):
             opts["stop"] = stop_list
 
         opts.update(kwargs)
+        # Ensure seed is int or removed
+        if opts.get("seed") is not None:
+            try:
+                opts["seed"] = int(opts["seed"])
+            except (ValueError, TypeError):
+                opts.pop("seed", None)
+
         return {k: v for k, v in opts.items() if v is not None}, schema
 
     def _generate_json_internal(
@@ -202,6 +245,7 @@ class OllamaLLM(BaseLLM):
         Raises:
             RuntimeError: If the Ollama API call fails.
         """
+        self._reset_token_counts()
         opts, schema = self._make_response_options_and_schema(kwargs, response_model)
         mode_used = "ollama_schema_format"
         logger.debug(f"Using Ollama structured output with schema for model: {self.model}")
@@ -220,9 +264,11 @@ class OllamaLLM(BaseLLM):
             elif hasattr(resp, "message") and hasattr(resp.message, "content"):
                 raw_content = getattr(resp.message, "content", "")
 
-            # We expect raw_content to be a JSON string here, as requested by format='json'
+            # Update counts after successful call
+            self._update_token_counts(prompt, resp, raw_content)
             return str(raw_content), mode_used
         except Exception as e:
+            self._reset_token_counts()  # Reset on error
             logger.error(
                 f"Ollama JSON generation failed for model {self.model}: {e}", exc_info=True
             )
@@ -246,6 +292,7 @@ class OllamaLLM(BaseLLM):
         Raises:
             RuntimeError: If the asynchronous Ollama API call fails.
         """
+        self._reset_token_counts()
         opts, schema = self._make_response_options_and_schema(kwargs, response_model)
         mode_used = "ollama_schema_format"
         logger.debug(f"Using Ollama async structured output with schema for model: {self.model}")
@@ -262,8 +309,11 @@ class OllamaLLM(BaseLLM):
             elif hasattr(resp, "message") and hasattr(resp.message, "content"):
                 raw_content = getattr(resp.message, "content", "")
 
+            # Update counts after successful call
+            self._update_token_counts(prompt, resp, raw_content)
             return str(raw_content), mode_used
         except Exception as e:
+            self._reset_token_counts()  # Reset on error
             logger.error(
                 f"Ollama async JSON generation failed for model {self.model}: {e}", exc_info=True
             )
@@ -271,6 +321,8 @@ class OllamaLLM(BaseLLM):
 
     def generate_stream(self, prompt: str, **kwargs: Any) -> Iterator[str]:
         """Generates a stream of text chunks using the configured Ollama model.
+
+        Note: Token counts are reset but not reliably updated during streaming.
 
         Args:
             prompt: The input text prompt.
@@ -282,6 +334,7 @@ class OllamaLLM(BaseLLM):
         Raises:
             RuntimeError: If starting the stream generation fails.
         """
+        self._reset_token_counts()  # Reset counts for stream
         opts = self._prepare_options(**kwargs)
         try:
             stream = self._client.chat(
@@ -294,6 +347,8 @@ class OllamaLLM(BaseLLM):
                 content = self._strip_content(chunk)
                 if content:
                     yield content
+            # Final usage might be in the last chunk's dict, but accessing it reliably
+            # across library versions/models is tricky. Not implemented here.
         except Exception as e:
             logger.error(
                 f"Ollama stream generation failed for model {self.model}: {e}", exc_info=True
@@ -302,6 +357,8 @@ class OllamaLLM(BaseLLM):
 
     async def generate_stream_async(self, prompt: str, **kwargs: Any) -> AsyncIterator[str]:
         """Asynchronously generates a stream of text chunks using Ollama.
+
+        Note: Token counts are reset but not reliably updated during streaming.
 
         Args:
             prompt: The input text prompt.
@@ -313,6 +370,7 @@ class OllamaLLM(BaseLLM):
         Raises:
             RuntimeError: If starting the asynchronous stream generation fails.
         """
+        self._reset_token_counts()  # Reset counts for stream
         opts = self._prepare_options(**kwargs)
         try:
             stream = await self._async_client.chat(
@@ -325,6 +383,7 @@ class OllamaLLM(BaseLLM):
                 content = self._strip_content(chunk)
                 if content:
                     yield content
+            # Final usage might be in the last chunk's dict
         except Exception as e:
             logger.error(
                 f"Ollama async stream generation failed for model {self.model}: {e}", exc_info=True

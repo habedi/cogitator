@@ -13,8 +13,7 @@ applications.
 ### Features
 
 * Provides unified sync/async API for CoT strategies
-* Supports using OpenAI and Ollama as LLM providers 
-* Easy to extend and add new LLM providers and CoT strategies
+* Supports using OpenAI and Ollama as LLM providers
 * Supports structured model output with Pydantic validation
 * Includes a customizable benchmarking framework (see [benches](https://github.com/habedi/cogitator/blob/main/benches))
 * Includes implementations of popular CoT strategies and frameworks like
@@ -57,20 +56,20 @@ different LLM providers and CoT strategies.
 
 ## API Reference
 
-The Cogitator library's functionality is organized into several key modules:
+The Cogitator library's functionality is organized into several modules:
 
 * **LLM Providers (`cogitator.model`)**
-    * [`BaseLLM`](api/model/base.md): The abstract base LLM provider class that defines a common interface for all LLM providers.
+    * [`BaseLLM`](api/model/base.md): Base LLM provider class that defines a common interface for all providers.
     * [`OpenAILLM`](api/model/openai.md): LLM provider implementation for using OpenAI models (like gpt-4o-mini and gpt-4o).
     * [`OllamaLLM`](api/model/ollama.md): LLM provider implementation for using Ollama models (like Llama, Gemma, and Qwen).
 
 * **CoT Strategies (`cogitator.strategies`)**
-    * [`AutoCoT`](api/strategies/auto_cot.md): An implementation of the automatic CoT prompting strategy from [this paper](https://arxiv.org/abs/2210.03493).
-    * [`CDWCoT`](api/strategies/cdw_cot.md): An implementation of the clustered distance-weighted CoT framework from [this paper](https://arxiv.org/abs/2501.12226).
-    * [`GraphOfThoughts`](api/strategies/graph_of_thoughts.md): An implementation of the graph of thoughts CoT framework from [this paper](https://arxiv.org/abs/2308.09687).
-    * [`LeastToMost`](api/strategies/least_to_most.md): An implementation of the least-to-most prompting strategy from [this paper](https://arxiv.org/abs/2205.10625).
-    * [`SelfConsistency`](api/strategies/sc_cot.md): An implementation of the self-consistency prompting strategy from [this paper](https://arxiv.org/abs/2203.11171).
-    * [`TreeOfThoughts`](api/strategies/tree_of_thoughts.md): An implementation of the tree of thoughts CoT framework from [this paper](https://arxiv.org/abs/2305.10601).
+    * [`AutoCoT`](api/strategies/auto_cot.md): An implementation of the automatic CoT prompting strategy.
+    * [`CDWCoT`](api/strategies/cdw_cot.md): An implementation of the clustered distance-weighted CoT framework.
+    * [`GraphOfThoughts`](api/strategies/graph_of_thoughts.md): An implementation of the graph of thoughts CoT framework.
+    * [`LeastToMost`](api/strategies/least_to_most.md): An implementation of the least-to-most prompting strategy.
+    * [`SelfConsistency`](api/strategies/sc_cot.md): An implementation of the self-consistency prompting strategy.
+    * [`TreeOfThoughts`](api/strategies/tree_of_thoughts.md): An implementation of the tree of thoughts CoT framework.
 
 * **Data Formatting and Validation (`cogitator.schemas`)**
     * [`Schemas`](api/schemas.md): A set of Pydantic models that are used for validating structure of outputs from LLMs.

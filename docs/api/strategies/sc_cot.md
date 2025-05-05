@@ -1,6 +1,6 @@
 # Self-Consistency Prompting
 
-Implementation of the self-consistency prompting strategy from [this paper](https://arxiv.org/abs/2003.04933).
+An implementation of the self-consistency prompting strategy from [this paper](https://arxiv.org/abs/2003.04933).
 
 ::: cogitator.strategies.sc_cot.SelfConsistency
     options:

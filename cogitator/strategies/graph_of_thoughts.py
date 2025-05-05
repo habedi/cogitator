@@ -552,7 +552,9 @@ class GraphOfThoughts:
             The similar node if found above the threshold, otherwise None.
         """
         if not self.embedder or new_node.embed is None:
-            logger.debug(f"Skipping similarity check for node {new_node.id} (no embedder or embedding).")
+            logger.debug(
+                f"Skipping similarity check for node {new_node.id} (no embedder or embedding)."
+            )
             return None
 
         new_norm = np.linalg.norm(new_node.embed)
@@ -560,7 +562,9 @@ class GraphOfThoughts:
             logger.debug(f"Skipping similarity check for node {new_node.id} (zero norm embedding).")
             return None
 
-        logger.debug(f"Checking similarity for node {new_node.id} against {len(nodes_to_check)} nodes.")
+        logger.debug(
+            f"Checking similarity for node {new_node.id} against {len(nodes_to_check)} nodes."
+        )
         for other in nodes_to_check:
             if other.id == new_node.id or other.embed is None:
                 continue
