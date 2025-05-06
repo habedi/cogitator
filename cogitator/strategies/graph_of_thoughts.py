@@ -45,12 +45,12 @@ class GoTNode:
     _id_counter = 0
 
     def __init__(
-        self,
-        steps: List[str],
-        embedder: Optional[BaseEmbedder] = None,
-        parents: Optional[List["GoTNode"]] = None,
-        data: Optional[Any] = None,
-        text_content: Optional[str] = None,  # Store the core text content separately if needed
+            self,
+            steps: List[str],
+            embedder: Optional[BaseEmbedder] = None,
+            parents: Optional[List["GoTNode"]] = None,
+            data: Optional[Any] = None,
+            text_content: Optional[str] = None,  # Store the core text content separately if needed
     ) -> None:
         """Initializes a GoT node.
 
@@ -164,12 +164,12 @@ class GoTOperation(ABC):
 
     @abstractmethod
     def execute(
-        self,
-        grs: GraphReasoningState,
-        llm: BaseLLM,
-        prompts: Dict[str, str],
-        embedder: Optional[BaseEmbedder] = None,
-        **global_kwargs: Any,
+            self,
+            grs: GraphReasoningState,
+            llm: BaseLLM,
+            prompts: Dict[str, str],
+            embedder: Optional[BaseEmbedder] = None,
+            **global_kwargs: Any,
     ) -> None:
         """Executes the operation, modifying the GraphReasoningState.
 
@@ -185,13 +185,13 @@ class GoTOperation(ABC):
     # Optional: async version
     @abstractmethod
     async def execute_async(
-        self,
-        grs: GraphReasoningState,
-        llm: BaseLLM,
-        prompts: Dict[str, str],
-        embedder: Optional[BaseEmbedder] = None,
-        semaphore: Optional[asyncio.Semaphore] = None,
-        **global_kwargs,
+            self,
+            grs: GraphReasoningState,
+            llm: BaseLLM,
+            prompts: Dict[str, str],
+            embedder: Optional[BaseEmbedder] = None,
+            semaphore: Optional[asyncio.Semaphore] = None,
+            **global_kwargs,
     ) -> None:
         """Asynchronously executes the operation."""
         pass
@@ -484,20 +484,20 @@ class GraphOfThoughts:
     """
 
     def __init__(
-        self,
-        llm: BaseLLM,
-        embedder: Optional[BaseEmbedder] = None,
-        final_answer_format: Literal["text", "json"] = "text",
-        prompts: Optional[Dict[str, str]] = None,
-        max_tokens: Optional[int] = None,
-        seed: Optional[int] = None,
+            self,
+            llm: BaseLLM,
+            embedder: Optional[BaseEmbedder] = None,
+            final_answer_format: Literal["text", "json", "direct_content"] = "text",
+            prompts: Optional[Dict[str, str]] = None,
+            max_tokens: Optional[int] = None,
+            seed: Optional[int] = None,
     ) -> None:
         """Initializes the GraphOfThoughts strategy handler.
 
         Args:
             llm: The language model instance.
             embedder: Optional embedding model instance for similarity checks.
-            final_answer_format: Whether to extract the final answer as raw text or JSON.
+            final_answer_format: Whether to extract the final answer as raw text, JSON, or directly from the best node content.
             prompts: A dictionary mapping operation types (e.g., 'expand', 'evaluate',
                      'aggregate', 'improve') to their prompt templates.
             max_tokens: Default maximum tokens for LLM generation calls.
@@ -539,7 +539,7 @@ class GraphOfThoughts:
         }
 
     def _find_similar_node(
-        self, new_node: GoTNode, nodes_to_check: List[GoTNode], threshold: float
+            self, new_node: GoTNode, nodes_to_check: List[GoTNode], threshold: float
     ) -> Optional[GoTNode]:
         """Finds an existing node similar to `new_node` based on embedding similarity.
 
@@ -612,11 +612,11 @@ class GraphOfThoughts:
             raise ValueError(f"Unknown GoT operation: {op_name}")
 
     async def run_async(
-        self,
-        question: str,
-        graph_of_operations: List[Tuple[str, Dict]],
-        semaphore: Optional[asyncio.Semaphore] = None,
-        **kwargs: Any,
+            self,
+            question: str,
+            graph_of_operations: List[Tuple[str, Dict]],
+            semaphore: Optional[asyncio.Semaphore] = None,
+            **kwargs: Any,
     ) -> str:
         """Asynchronously executes the Graph of Thoughts reasoning process based on a GoO.
 
@@ -695,10 +695,13 @@ class GraphOfThoughts:
             final_seed = local_kwargs_final.pop("seed", self.seed)
             final_max_tokens = local_kwargs_final.pop("max_tokens", self.max_tokens)
 
+            if self.final_answer_format == "direct_content":
+                return best_node.text_content or "Error: Best node had no content."
+
             if self.final_answer_format == "json":
                 json_req = (
-                    final_prompt
-                    + '\n\nReturn exactly one JSON object with a single key "final_answer" whose value is the answer string.\n\nJSON Answer:'
+                        final_prompt
+                        + '\n\nReturn exactly one JSON object with a single key "final_answer" whose value is the answer string.\n\nJSON Answer:'
                 )
                 gen_args = {
                     "response_model": ExtractedAnswer,
