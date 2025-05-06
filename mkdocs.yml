@@ -21,6 +21,9 @@ theme:
     - navigation.tabs
     - navigation.top
     - navigation.indexes
+    - navigation.expand
+    - content.code.select
+    - content.code.annotate
 
 plugins:
   - search
@@ -34,20 +37,21 @@ nav:
   - Home: index.md
   - API Reference:
       - LLM Providers:
-          - Base: api/model.md
-          - OpenAI: api/openai.md
-          - Ollama: api/ollama.md
+          - Base: api/model/base.md
+          - OpenAI: api/model/openai.md
+          - Ollama: api/model/ollama.md
       - Schemas: api/schemas.md
       - Embedding: api/embedding.md
       - Clustering: api/clustering.md
+      - Utilities: api/utils.md
       - Strategies:
-          - AutoCoT: api/auto_cot.md
-          - CDWCoT: api/cdw_cot.md
-          - GraphOfThoughts: api/graph_of_thoughts.md
-          - LeastToMost: api/least_to_most.md
-          - SelfConsistency: api/sc_cot.md
-          - TreeOfThoughts: api/tree_of_thoughts.md
-  - Benchmarking: benchmarks.md
+          - AutoCoT: api/strategies/auto_cot.md
+          - CDWCoT: api/strategies/cdw_cot.md
+          - GraphOfThoughts: api/strategies/graph_of_thoughts.md
+          - LeastToMost: api/strategies/least_to_most.md
+          - SelfConsistency: api/strategies/sc_cot.md
+          - TreeOfThoughts: api/strategies/tree_of_thoughts.md
+  - Benchmarking: benchmarking.md
   - Contributing: contributing.md
 
 markdown_extensions:

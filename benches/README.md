@@ -16,7 +16,8 @@ Available Options for `run.py`:
 * `--cutoff <number>`: Number of samples to load from the dataset (-1 for all; default: `50`). These samples are used
   for both setup (if needed) and generation and testing.
 * `--provider <provider>`: LLM provider (`ollama` or `openai`; default: `ollama`).
-* `--model-name <model>`: Model name for the provider (default: `gemma3:4b` for ollama, `gpt-4o-mini` for openai).
+* `--model-name <model>`: Model name for the provider (default: `gemma2:9b` for ollama, `gpt-4o-mini` for openai). Verify model
+  availability.
 * `--openai-key <key>`: OpenAI API key (needed for `--provider openai`, can use `OPENAI_API_KEY` environment variable if
   it is set).
 * `--use-async`: Use asynchronous execution for LLM calls (default: sync). Highly recommended for speed.
@@ -45,7 +46,7 @@ The `run.py` script executes the following steps:
     * The raw text output from the LLM and the execution time are recorded.
 6. **Output:** Results are saved line-by-line in JSONL format to the specified output file.
 
-See `poetry run python benches/run.py --help` for seeing all available options.
+See `poetry run python benches/run.py --help` to see all available options.
 
 ### Evaluation (`evaluate.py`)
 
@@ -91,7 +92,7 @@ Benchmark runs are configured using `benches.yml` in the project root, combined 
     * `extractor`: Configures how final answers are extracted.
         * `type`: `heuristic` or `llm`.
         * `provider`, `model_name`: Settings for the LLM extractor if `type` is `llm`.
-        * `ollama_host`: (**Optional**) Specify the Ollama host *for the extractor LLM*, if using `type: llm` and
+        * `ollama_host`: Specify the Ollama host for the extractor LLM, if using `type: llm` and
           `provider: ollama`. Defaults apply if null/omitted.
         * `llm_params`: Settings for the LLM extractor if `type` is `llm`.
     * `show_details`: `true` to print per-question evaluation details.
@@ -106,10 +107,11 @@ Benchmark runs are configured using `benches.yml` in the project root, combined 
 
 See the example `benches.yml` in the repository for detailed options.
 
-**Note on Secrets:** For parameters like OpenAI keys, it's recommended to specify the *environment variable name* in
-`benches.yml` (e.g., `openai_key_env_var: "MY_API_KEY"`) rather than pasting the key directly into the file. The scripts
-will then read the key from the specified environment variable. You can still override this by passing `--openai-key` on
-the command line.
+> [!NOTE]
+> For parameters like OpenAI keys, it is recommended to specify the *environment variable name* in `benches.yml` (e.g.,
+`openai_key_env_var: "MY_API_KEY"`) rather than pasting the key directly into the file.
+> The scripts will then read the key from the specified environment variable.
+> You can still override this by passing `--openai-key` on the command line.
 
 ### Example Usages (`run.py`)
 
@@ -126,28 +128,27 @@ the command line.
 
 ### Dependencies
 
-To run the benchmarks, you might want to install the development dependencies along with the main package.
+To run the benchmarks, you might want to install the development dependencies along with Cogitator itself.
 
 ```bash
-pip install cogitator[dev]
-# Or poetry install --with dev
+poetry install --with dev
 ```
 
 Additionally, any model used in the benchmarks must be available.
-For Ollama, pull models using `ollama pull <model_name>`.
+Make sure the Ollama server is **running** and pull desired models using `ollama pull <model_name>`.
 Make sure the OpenAI key is set correctly if using the OpenAI models.
 
 ### More Examples
 
 ```bash
-# Run using benches.yml (assuming it's configured for Ollama, gemma3:4b, aqua, async, etc.)
+# Run using benches.yml (assuming it's configured for Ollama, gemma2:9b, aqua, async, etc.)
 poetry run python benches/run.py --output-file my_ollama_results.jsonl
 
 # Evaluate the results using heuristic (as configured in benches.yml or default)
 poetry run python benches/evaluate.py --input-file my_ollama_results.jsonl --show-details
 
 # Evaluate the results using LLM extractor (override benches.yml extractor setting)
-poetry run python benches/evaluate.py --extractor-type llm --provider ollama --model-name qwen3:14b --input-file my_ollama_results.jsonl
+poetry run python benches/evaluate.py --extractor-type llm --provider ollama --model-name llama3 --input-file my_ollama_results.jsonl
 
 # Run specifically with OpenAI, overriding YAML if necessary
 poetry run python benches/run.py --provider openai --model-name gpt-4o-mini --dataset csqa --cutoff 10 --use-async --output-file my_openai_results.jsonl
@@ -158,9 +159,14 @@ poetry run python benches/evaluate.py --input-file my_openai_results.jsonl --ext
 
 ## Performance Metric
 
-Accuracy is the primary metric reported by the `evaluate.py` script. It is defined as the percentage of correctly
-answered questions out of the total number of successfully extracted answers for a given CoT strategy.
-Failed extractions are reported separately.
+Accuracy is the primary metric reported by the `evaluate.py` script.
+It is defined as the percentage of correctly answered questions out of the total number of successfully extracted answers for a
+given CoT strategy.
+
+> [!NOTE]
+> This definition means accuracy reflects performance *only* on runs where the final answer could be successfully extracted.
+> Runs resulting in extraction errors (e.g., the extractor fails to find an answer in the raw output) are excluded from the
+> accuracy calculation, which is important when comparing strategies with different extraction success rates.
 
 ## Datasets
 

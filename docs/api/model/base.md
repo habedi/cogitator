@@ -1,8 +1,8 @@
-# cogitator.model.openai
+# LLM Provider Interface
 
-Implementation of the BaseLLM interface for OpenAI models.
+This module defines the abstract base class for all LLM providers.
 
-::: cogitator.model.openai.OpenAILLM
+::: cogitator.model.base.BaseLLM
     options:
         show_root_heading: true
         show_source: true

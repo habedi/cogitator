@@ -31,7 +31,7 @@ install: ## Install Python dependencies
 # Testing and linting
 .PHONY: test
 test: ## Run the tests
-	$(POETRY) run pytest
+	CUDA_VISIBLE_DEVICES="" $(POETRY) run pytest
 
 .PHONY: lint
 lint: ## Run the linter checks

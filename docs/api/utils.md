@@ -1,29 +1,29 @@
-# Schemas for Structured Data
+# Utility Functions
 
-This module defines Pydantic models used for structuring and validating intermediate and final outputs from LLMs.
+This module provides various utility functions used throughout the Cogitator library, such as metrics calculation and text processing helpers.
 
-::: cogitator.schemas.LTMDecomposition
+::: cogitator.utils.count_steps
     options:
         show_root_heading: true
         show_source: true
         members_order: source
         heading_level: 2
 
-::: cogitator.schemas.ThoughtExpansion
+::: cogitator.utils.approx_token_length
     options:
         show_root_heading: true
         show_source: true
         members_order: source
         heading_level: 2
 
-::: cogitator.schemas.EvaluationResult
+::: cogitator.utils.exact_match
     options:
         show_root_heading: true
         show_source: true
         members_order: source
         heading_level: 2
 
-::: cogitator.schemas.ExtractedAnswer
+::: cogitator.utils.accuracy
     options:
         show_root_heading: true
         show_source: true

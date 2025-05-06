@@ -159,7 +159,8 @@ def _extract_letter_concat_heuristic(text: str) -> Optional[str]:
 
 
 def extract_answer_heuristic_custom(raw_output: str, dataset_name: str) -> str:
-    if not raw_output or str(raw_output).strip() == "[ERROR]" or str(raw_output).strip().startswith("[ERROR:"):
+    if not raw_output or str(raw_output).strip() == "[ERROR]" or str(raw_output).strip().startswith(
+        "[ERROR:"):
         return "[ERROR]"
 
     text = str(raw_output).strip()

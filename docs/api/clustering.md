@@ -1,7 +1,6 @@
-# cogitator.clustering
+# Clustering Module
 
-This module defines abstractions and implementations for clustering algorithms, primarily used to group similar embeddings in
-strategies like AutoCoT and CDWCoT.
+This module defines abstractions and implementations for clustering algorithms used by a few of the strategies.
 
 ::: cogitator.clustering.BaseClusterer
     options:

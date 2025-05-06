@@ -41,12 +41,13 @@ def mock_llm(mocker):
 
     async def async_json_side_effect(*args, **kwargs):
         await asyncio.sleep(0)
-        # Return an object that behaves like ExtractedAnswer for attribute access
         mock_answer = MagicMock(spec=ExtractedAnswer)
         mock_answer.final_answer = "Mock Async JSON"
         return mock_answer
 
     mock_llm_instance.generate_json_async = MagicMock(side_effect=async_json_side_effect)
+    mock_llm_instance.get_last_prompt_tokens.return_value = 10
+    mock_llm_instance.get_last_completion_tokens.return_value = 20
     return mock_llm_instance
 
 

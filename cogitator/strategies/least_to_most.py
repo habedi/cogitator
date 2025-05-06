@@ -1,7 +1,9 @@
+"""Implements the Least-to-Most (LtM) prompting strategy."""
+
 import asyncio
 import json
 import logging
-from typing import List, Literal, Optional, Tuple
+from typing import Any, List, Literal, Optional, Tuple
 
 from pydantic import ValidationError
 
@@ -12,6 +14,18 @@ logger = logging.getLogger(__name__)
 
 
 class LeastToMost:
+    """Implements the Least-to-Most (LtM) prompting strategy.
+
+    LtM prompting involves two main stages:
+    1. Decompose: Break down a complex problem into a sequence of simpler subproblems.
+    2. Solve: Sequentially solve each subproblem, using the answers to previous
+       subproblems as context for the next.
+
+    Reference:
+        Zhou et al. (v3; 2023) "Least-to-Most Prompting Enables Complex Reasoning in Large Language Models".
+        https://arxiv.org/abs/2205.10625
+    """
+
     def __init__(
         self,
         llm: BaseLLM,
@@ -41,6 +55,25 @@ class LeastToMost:
         max_tokens: Optional[int] = None,
         seed: Optional[int] = None,
     ) -> None:
+        """Initializes the LeastToMost strategy handler.
+
+        Args:
+            llm: The language model instance.
+            few_shot_examples: Optional list of (question, subquestions) tuples
+                to use as examples in the decomposition prompt. Defaults to internal examples.
+            intermediate_output_format: Format for intermediate answers ('text' or 'json').
+                                       If 'json', attempts to parse using ExtractedAnswer schema.
+            decompose_prompt_template: Prompt template for the decomposition step.
+                                       Must include {question}. Expects JSON output
+                                       matching LTMDecomposition schema.
+            solve_prompt_template: Prompt template for solving each subquestion.
+                                  Must include {context} and {subquestion}.
+            final_answer_prompt_template: Prompt template for generating the final answer.
+                                          Must include {solved_steps} and {question}.
+            max_subqs: Maximum number of subquestions to generate or process.
+            max_tokens: Default maximum tokens for LLM generation calls.
+            seed: Random seed for LLM calls.
+        """
         self.llm = llm
         self.intermediate_output_format = intermediate_output_format
         self.max_subqs = max_subqs
@@ -75,12 +108,26 @@ class LeastToMost:
         self.seed = seed
 
     def _build_prefix(self) -> str:
+        """Builds the few-shot example prefix for the decomposition prompt."""
         prefix = ""
         for ex_q, ex_subs in self.examples:
             prefix += f"Main Question: {ex_q}\nJSON Subquestions: {json.dumps(ex_subs)}\n\n"
         return prefix
 
-    def decompose(self, question: str, **kwargs) -> List[str]:
+    def decompose(self, question: str, **kwargs: Any) -> List[str]:
+        """Decomposes a complex question into simpler subquestions using the LLM.
+
+        Args:
+            question: The main question to decompose.
+            **kwargs: Additional arguments passed to the LLM `generate_json` call.
+
+        Returns:
+            A list of subquestion strings.
+
+        Raises:
+            ValueError: If the LLM response fails validation, is empty, or if the
+                        LLM call itself fails.
+        """
         prompt = self._build_prefix() + self.decompose_prompt_template.format(question=question)
         logger.debug("LTM Decompose Prompt:\n%s", prompt)
         try:
@@ -116,8 +163,22 @@ class LeastToMost:
         return subs[: self.max_subqs]
 
     async def decompose_async(
-        self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs
+        self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
     ) -> List[str]:
+        """Asynchronously decomposes a complex question into simpler subquestions.
+
+        Args:
+            question: The main question to decompose.
+            semaphore: Optional asyncio.Semaphore to limit concurrent LLM calls.
+            **kwargs: Additional arguments passed to the async LLM `generate_json_async` call.
+
+        Returns:
+            A list of subquestion strings.
+
+        Raises:
+            ValueError: If the LLM response fails validation, is empty, or if the
+                        async LLM call itself fails.
+        """
         prompt = self._build_prefix() + self.decompose_prompt_template.format(question=question)
         logger.debug("LTM Async Decompose Prompt:\n%s", prompt)
 
@@ -161,7 +222,21 @@ class LeastToMost:
             raise ValueError("Async LLM returned empty subquestions list after validation.")
         return subs[: self.max_subqs]
 
-    def solve(self, question: str, subqs: List[str], **kwargs) -> List[Tuple[str, str]]:
+    def solve(self, question: str, subqs: List[str], **kwargs: Any) -> List[Tuple[str, str]]:
+        """Sequentially solves the subquestions using the LLM.
+
+        Iterates through subquestions, building context from previous answers
+        and calling the LLM to answer the current subquestion.
+
+        Args:
+            question: The original main question (used for context if needed).
+            subqs: The list of subquestions generated by `decompose`.
+            **kwargs: Additional arguments passed to the LLM generation calls.
+
+        Returns:
+            A list of (subquestion, answer) tuples. Answers might be "[Error]" or
+            "[No Answer Found]" if the generation fails or returns empty.
+        """
         solved: List[Tuple[str, str]] = []
         for i, sub in enumerate(subqs):
             context = (
@@ -203,8 +278,22 @@ class LeastToMost:
         question: str,
         subqs: List[str],
         semaphore: Optional[asyncio.Semaphore] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> List[Tuple[str, str]]:
+        """Asynchronously and sequentially solves the subquestions using the LLM.
+
+        Maintains sequential dependency: the next subquestion is only solved after
+        the previous one is answered. Uses async LLM calls for each step.
+
+        Args:
+            question: The original main question.
+            subqs: The list of subquestions generated by `decompose_async`.
+            semaphore: Optional asyncio.Semaphore to limit concurrent LLM calls.
+            **kwargs: Additional arguments passed to the async LLM generation calls.
+
+        Returns:
+            A list of (subquestion, answer) tuples.
+        """
         solved: List[Tuple[str, str]] = []
 
         async def one(i: int, sq: str, ctx: str) -> Tuple[int, str, str]:
@@ -255,7 +344,19 @@ class LeastToMost:
 
         return solved
 
-    def run(self, question: str, **kwargs) -> str:
+    def run(self, question: str, **kwargs: Any) -> str:
+        """Executes the full Least-to-Most process for a question.
+
+        Calls `decompose`, then `solve`, then formats the results and calls the LLM
+        one last time to generate the final answer based on the solved steps.
+
+        Args:
+            question: The main question to answer.
+            **kwargs: Additional arguments passed to internal LLM calls.
+
+        Returns:
+            The final answer string, or an error message if any step fails.
+        """
         final_answer = "[Error: Processing failed]"
         try:
             subs = self.decompose(question, **kwargs)
@@ -289,8 +390,21 @@ class LeastToMost:
         return final_answer
 
     async def run_async(
-        self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs
+        self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
     ) -> str:
+        """Asynchronously executes the full Least-to-Most process for a question.
+
+        Calls `decompose_async`, then `solve_async`, then formats the results and calls
+        the LLM asynchronously one last time for the final answer.
+
+        Args:
+            question: The main question to answer.
+            semaphore: Optional asyncio.Semaphore to limit concurrent LLM calls.
+            **kwargs: Additional arguments passed to internal async LLM calls.
+
+        Returns:
+            The final answer string, or an error message if any step fails.
+        """
         final_answer = "[Error: Async processing failed]"
         try:
             subs = await self.decompose_async(question, semaphore, **kwargs)

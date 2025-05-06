@@ -1,19 +1,23 @@
+"""Implements the Graph of Thoughts (GoT) framework."""
+
 import asyncio
 import json
 import logging
 import re
+from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 
 from ..embedding import BaseEmbedder, SentenceTransformerEmbedder
 from ..model import BaseLLM
-from ..schemas import EvaluationResult, ExtractedAnswer
+from ..schemas import EvaluationResult, ExtractedAnswer, ThoughtExpansion
 
 logger = logging.getLogger(__name__)
 
 
 def _strip_fences(text: str) -> str:
+    """Removes Markdown code fences (```json ... ``` or ``` ... ```) from text."""
     t = text.strip()
     match = re.match(r"```(?:json)?\s*(.*)\s*```", t, re.DOTALL | re.IGNORECASE)
     if match:
@@ -23,209 +27,538 @@ def _strip_fences(text: str) -> str:
     return t
 
 
-class GraphOfThoughts:
-    class _Node:
-        __slots__ = ("children", "data", "embed", "id", "parents", "score_sum", "steps", "visits")
-        _id_counter = 0
+class GoTNode:
+    """Represents a node (thought) in the Graph of Thoughts."""
 
-        def __init__(
-            self,
-            steps: List[str],
-            embedder: BaseEmbedder,
-            parents: Optional[List["GraphOfThoughts._Node"]] = None,
-            data: Optional[Any] = None,
-        ) -> None:
-            self.id = GraphOfThoughts._Node._id_counter
-            GraphOfThoughts._Node._id_counter += 1
+    __slots__ = (
+        "children",
+        "data",
+        "embed",
+        "id",
+        "parents",
+        "score",
+        "steps",
+        "text_content",
+        "valid",
+        "visits",
+    )
+    _id_counter = 0
 
-            self.steps = steps
-            self.parents = parents or []
-            self.children: List["GraphOfThoughts._Node"] = []
-            self.embed: Optional[np.ndarray] = None
-            self.visits = 0
-            self.score_sum = 0.0
-            self.data = data
+    def __init__(
+        self,
+        steps: List[str],
+        embedder: Optional[BaseEmbedder] = None,
+        parents: Optional[List["GoTNode"]] = None,
+        data: Optional[Any] = None,
+        text_content: Optional[str] = None,  # Store the core text content separately if needed
+    ) -> None:
+        """Initializes a GoT node.
 
+        Args:
+            steps: The sequence of reasoning steps/operations leading to this node.
+            embedder: The embedding model used for calculating node similarity. Can be None.
+            parents: A list of parent nodes.
+            data: Optional arbitrary data associated with the node.
+            text_content: Optional string representing the actual thought content.
+        """
+        self.id: int = GoTNode._id_counter
+        GoTNode._id_counter += 1
+
+        self.steps: List[str] = steps  # History or description of how node was created
+        self.text_content: Optional[str] = text_content  # The actual thought text
+        self.parents: List["GoTNode"] = parents or []
+        self.children: List["GoTNode"] = []
+        self.embed: Optional[np.ndarray] = None
+        self.visits: int = 0  # Can be used for MCTS-like scores or just tracking
+        self.score: float = 0.0  # Store the latest evaluated score directly
+        self.valid: Optional[bool] = None  # Validity status
+        self.data: Optional[Any] = data  # Store auxiliary data
+
+        if embedder and self.text_content:
             try:
-                text_to_encode = " -> ".join(self.steps)
-                if text_to_encode:
-                    emb_list = embedder.encode([text_to_encode])
-                    if len(emb_list) > 0 and emb_list[0] is not None:
-                        self.embed = np.array(emb_list[0], dtype=float)
+                emb_list = embedder.encode([self.text_content])
+                if len(emb_list) > 0 and emb_list[0] is not None:
+                    self.embed = np.array(emb_list[0], dtype=float)
             except Exception as e:
-                logger.error("Failed to encode node %d steps: %s", self.id, e)
+                logger.error("Failed to encode node %d content: %s", self.id, e)
                 self.embed = None
 
-        def score(self) -> float:
-            return self.score_sum / self.visits if self.visits > 0 else 0.0
-
-        def is_ancestor(self, potential_ancestor: "GraphOfThoughts._Node") -> bool:
-            if not self.parents:
-                return False
-            queue = list(self.parents)
-            visited = {self.id}
-            while queue:
-                p = queue.pop(0)
-                if p.id == potential_ancestor.id:
-                    return True
-                if p.id not in visited:
-                    visited.add(p.id)
-                    queue.extend(p.parents)
+    def is_ancestor(self, potential_ancestor: "GoTNode") -> bool:
+        """Checks if `potential_ancestor` is an ancestor of this node."""
+        if not self.parents:
             return False
+        queue = list(self.parents)
+        visited = {self.id}
+        while queue:
+            p = queue.pop(0)
+            if p.id == potential_ancestor.id:
+                return True
+            if p.id not in visited:
+                visited.add(p.id)
+                queue.extend(p.parents)
+        return False
 
-        def __repr__(self) -> str:
-            pids = [p.id for p in self.parents]
-            return (
-                f"Node(id={self.id}, steps={len(self.steps)}, "
-                f"score={self.score():.2f}, visits={self.visits}, parents={pids})"
+    def __repr__(self) -> str:
+        """Returns a string representation of the node."""
+        pids = [p.id for p in self.parents]
+        content_preview = f"'{self.text_content[:20]}...'" if self.text_content else "None"
+        return (
+            f"Node(id={self.id}, score={self.score:.2f}, valid={self.valid}, "
+            f"parents={pids}, content={content_preview})"
+        )
+
+
+class GraphReasoningState:
+    """Maintains the dynamic state of the GoT reasoning process."""
+
+    def __init__(self, root_node: GoTNode) -> None:
+        """Initializes the Graph Reasoning State.
+
+        Args:
+            root_node: The initial node containing the problem input.
+        """
+        self.all_nodes: Dict[int, GoTNode] = {root_node.id: root_node}
+        # 'active_sets' can store different groups of nodes, e.g., 'frontier', 'scored', 'generated_in_step_X'
+        self.active_sets: Dict[str, List[GoTNode]] = {"frontier": [root_node]}
+
+    def add_node(self, node: GoTNode) -> None:
+        """Adds a new node to the state."""
+        if node.id not in self.all_nodes:
+            self.all_nodes[node.id] = node
+            for parent in node.parents:
+                if parent.id in self.all_nodes:
+                    self.all_nodes[parent.id].children.append(node)
+        else:
+            logger.warning(f"Attempted to add duplicate node ID {node.id}")
+
+    def get_nodes(self, node_ids: List[int]) -> List[GoTNode]:
+        """Retrieves nodes by their IDs."""
+        return [self.all_nodes[nid] for nid in node_ids if nid in self.all_nodes]
+
+    def get_active_set(self, set_name: str) -> List[GoTNode]:
+        """Gets the list of nodes in a named active set."""
+        return self.active_sets.get(set_name, [])
+
+    def set_active_set(self, set_name: str, nodes: List[GoTNode]) -> None:
+        """Sets or replaces a named active set."""
+        self.active_sets[set_name] = nodes
+
+    def update_node(self, node: GoTNode) -> None:
+        """Updates an existing node in the state (e.g., score, validity)."""
+        if node.id in self.all_nodes:
+            # Update fields as needed, e.g.:
+            self.all_nodes[node.id].score = node.score
+            self.all_nodes[node.id].valid = node.valid
+            # Be careful not to overwrite structural info like parents/children unless intended
+        else:
+            logger.warning(f"Attempted to update non-existent node ID {node.id}")
+
+
+# --- Operation Base Class ---
+class GoTOperation(ABC):
+    """Abstract base class for all Graph of Thoughts operations."""
+
+    def __init__(self, **params) -> None:
+        """Initializes the operation with specific parameters."""
+        self.params = params
+
+    @abstractmethod
+    def execute(
+        self,
+        grs: GraphReasoningState,
+        llm: BaseLLM,
+        prompts: Dict[str, str],
+        embedder: Optional[BaseEmbedder] = None,
+        **global_kwargs: Any,
+    ) -> None:
+        """Executes the operation, modifying the GraphReasoningState.
+
+        Args:
+            grs: The current graph reasoning state.
+            llm: The language model instance.
+            prompts: A dictionary of available prompt templates.
+            embedder: Optional embedder for operations needing similarity.
+            global_kwargs: Global arguments like seed, max_tokens passed to LLM calls.
+        """
+        pass
+
+    # Optional: async version
+    @abstractmethod
+    async def execute_async(
+        self,
+        grs: GraphReasoningState,
+        llm: BaseLLM,
+        prompts: Dict[str, str],
+        embedder: Optional[BaseEmbedder] = None,
+        semaphore: Optional[asyncio.Semaphore] = None,
+        **global_kwargs,
+    ) -> None:
+        """Asynchronously executes the operation."""
+        pass
+
+
+# --- Concrete Operation Implementations (Examples) ---
+
+
+class GenerateOp(GoTOperation):
+    """Generates new thoughts based on parent nodes."""
+
+    async def execute_async(self, grs, llm, prompts, embedder, semaphore, **global_kwargs) -> None:
+        """Generates new thoughts asynchronously."""
+        k = self.params.get("k", 1)
+        target_set = self.params.get("target_set", "frontier")
+        output_set = self.params.get(
+            "output_set", "generated"
+        )  # Where to store newly generated nodes
+        prompt_key = self.params.get("prompt_key", "expand")  # e.g., 'sort', 'expand'
+        response_schema = self.params.get("response_schema", ThoughtExpansion)  # Optional schema
+
+        parent_nodes = grs.get_active_set(target_set)
+        newly_generated_nodes = []
+
+        async def gen_task(parent_node):
+            ctx = parent_node.text_content or "\n".join(parent_node.steps)  # Get context
+            prompt = prompts[prompt_key].format(
+                k=k, ctx=ctx, **parent_node.data if parent_node.data else {}
             )
+
+            try:
+                local_kwargs = global_kwargs.copy()
+                gen_args = {
+                    "max_tokens": local_kwargs.pop("max_tokens", None),
+                    "seed": local_kwargs.pop("seed", None),  # Add seed variation logic if needed
+                    **local_kwargs,
+                }
+                # Use generate_json if schema provided, else generate
+                if response_schema:
+                    gen_args["response_model"] = response_schema
+                    if semaphore:
+                        async with semaphore:
+                            result = await llm.generate_json_async(prompt, **gen_args)
+                    else:
+                        result = await llm.generate_json_async(prompt, **gen_args)
+
+                    # Adapt parsing based on schema (e.g., ThoughtExpansion)
+                    thoughts_texts = [
+                        str(t).strip() for t in getattr(result, "thoughts", []) if str(t).strip()
+                    ]
+
+                else:  # Assuming the response is a list of strings in JSON
+                    if semaphore:
+                        async with semaphore:
+                            raw = await llm.generate_async(prompt, **gen_args)
+                    else:
+                        raw = await llm.generate_async(prompt, **gen_args)
+
+                    # Simplified parsing - adjust as needed
+                    try:
+                        parsed_list = json.loads(_strip_fences(raw))
+                        thoughts_texts = [
+                            str(t).strip()
+                            for t in parsed_list
+                            if isinstance(t, (str, int, float)) and str(t).strip()
+                        ]
+                    except Exception:
+                        thoughts_texts = []
+                        logger.error(
+                            f"Failed to parse GenerateOp JSON response for node {parent_node.id}"
+                        )
+
+                node_results = []
+                for thought_text in thoughts_texts[:k]:
+                    new_node = GoTNode(
+                        steps=[*parent_node.steps, f"Generate({prompt_key})"],
+                        parents=[parent_node],
+                        text_content=thought_text,
+                        embedder=embedder,
+                    )
+                    grs.add_node(
+                        new_node
+                    )  # Add immediately to allow potential merging later if needed
+                    node_results.append(new_node)
+                return node_results
+            except Exception as e:
+                logger.error(
+                    f"Generate task failed for parent {parent_node.id}: {e}", exc_info=True
+                )
+                return []
+
+        results = await asyncio.gather(*(gen_task(node) for node in parent_nodes))
+        for node_list in results:
+            newly_generated_nodes.extend(node_list)
+
+        grs.set_active_set(output_set, newly_generated_nodes)
+        logger.info(
+            f"GenerateOp created {len(newly_generated_nodes)} new nodes in set '{output_set}'."
+        )
+
+    def execute(self, grs, llm, prompts, embedder, **global_kwargs) -> None:
+        # Synchronous version would mirror async logic without async/await/gather
+        raise NotImplementedError(
+            "Synchronous execute not fully implemented for GenerateOp sketch."
+        )
+
+
+class AggregateOp(GoTOperation):
+    """Aggregates multiple thoughts into new ones."""
+
+    async def execute_async(self, grs, llm, prompts, embedder, semaphore, **global_kwargs) -> None:
+        """Aggregates thoughts asynchronously."""
+        k = self.params.get("k", 1)
+        target_sets = self.params.get(
+            "target_sets", ["frontier"]
+        )  # List of set names to aggregate from
+        output_set = self.params.get("output_set", "aggregated")
+        prompt_key = self.params.get("prompt_key", "aggregate")  # e.g., 'merge', 'summarize'
+
+        nodes_to_aggregate = []
+        for set_name in target_sets:
+            nodes_to_aggregate.extend(grs.get_active_set(set_name))
+
+        if not nodes_to_aggregate:
+            logger.warning("AggregateOp: No nodes found in target sets.")
+            grs.set_active_set(output_set, [])
+            return
+
+        contexts = []
+        parent_refs = []
+        for i, node in enumerate(nodes_to_aggregate):
+            contexts.append(f"Input {i + 1}:\n{node.text_content or 'No Content'}\n")
+            parent_refs.append(node)
+        full_context = "\n".join(contexts)
+
+        prompt = prompts[prompt_key].format(k=k, context=full_context)
+        newly_aggregated_nodes = []
+
+        try:
+            local_kwargs = global_kwargs.copy()
+            gen_args = {
+                "max_tokens": local_kwargs.pop("max_tokens", None),
+                "seed": local_kwargs.pop("seed", None),
+                **local_kwargs,
+            }
+
+            if semaphore:
+                async with semaphore:
+                    raw = await llm.generate_async(prompt, **gen_args)
+            else:
+                raw = await llm.generate_async(prompt, **gen_args)
+
+            # Simplified parsing - assuming a list of aggregated thoughts
+            try:
+                parsed_list = json.loads(_strip_fences(raw))
+                aggregated_texts = [
+                    str(t).strip()
+                    for t in parsed_list
+                    if isinstance(t, (str, int, float)) and str(t).strip()
+                ]
+            except Exception:
+                aggregated_texts = [
+                    _strip_fences(raw)
+                ]  # Fallback: treat the whole output as one thought
+                if not aggregated_texts[0]:
+                    logger.error("Failed to parse AggregateOp JSON response.")
+                    aggregated_texts = []
+
+            for agg_text in aggregated_texts[:k]:
+                new_node = GoTNode(
+                    steps=[f"Aggregate({prompt_key}) from {[p.id for p in parent_refs]}"],
+                    parents=parent_refs,
+                    text_content=agg_text,
+                    embedder=embedder,
+                )
+                grs.add_node(new_node)
+                newly_aggregated_nodes.append(new_node)
+
+        except Exception as e:
+            logger.error(
+                f"Aggregate task failed for parents {[p.id for p in parent_refs]}: {e}",
+                exc_info=True,
+            )
+
+        grs.set_active_set(output_set, newly_aggregated_nodes)
+        logger.info(
+            f"AggregateOp created {len(newly_aggregated_nodes)} new nodes in set '{output_set}'."
+        )
+
+    def execute(self, grs, llm, prompts, embedder, **global_kwargs) -> None:
+        raise NotImplementedError(
+            "Synchronous execute not fully implemented for AggregateOp sketch."
+        )
+
+
+class ScoreOp(GoTOperation):
+    """Scores thoughts using the LLM."""
+
+    async def execute_async(self, grs, llm, prompts, embedder, semaphore, **global_kwargs) -> None:
+        """Scores nodes asynchronously."""
+        target_set = self.params.get(
+            "target_set", "generated"
+        )  # Score nodes generated in a previous step
+        prompt_key = self.params.get("prompt_key", "evaluate")
+
+        nodes_to_score = grs.get_active_set(target_set)
+
+        async def score_task(node):
+            if not node.text_content:
+                return node.id, 0.0  # Cannot score nodes without content
+
+            steps_str = node.text_content  # Or format node.steps if needed
+            prompt = prompts[prompt_key].format(
+                steps=steps_str
+            )  # Prompt needs 'steps' or similar key
+
+            try:
+                local_kwargs = global_kwargs.copy()
+                gen_args = {
+                    "response_model": EvaluationResult,
+                    "max_tokens": local_kwargs.pop("max_tokens", None),
+                    "seed": local_kwargs.pop("seed", None),  # Add seed variation
+                    **local_kwargs,
+                }
+                if semaphore:
+                    async with semaphore:
+                        result = await llm.generate_json_async(prompt, **gen_args)
+                else:
+                    result = await llm.generate_json_async(prompt, **gen_args)
+
+                if isinstance(result, EvaluationResult):
+                    raw = float(result.score)
+                    normalized_score = max(0.0, min(1.0, (raw - 1.0) / 9.0))
+                    return node.id, normalized_score
+                else:
+                    logger.error(
+                        f"ScoreOp returned unexpected type for node {node.id}: {type(result)}"
+                    )
+                    return node.id, 0.0
+            except Exception as e:
+                logger.error(f"Score task failed for node {node.id}: {e}", exc_info=True)
+                return node.id, 0.0
+
+        results = await asyncio.gather(*(score_task(node) for node in nodes_to_score))
+
+        for node_id, score in results:
+            if node_id in grs.all_nodes:
+                grs.all_nodes[node_id].score = score
+                grs.all_nodes[node_id].visits += 1
+
+        logger.info(f"ScoreOp evaluated {len(nodes_to_score)} nodes in set '{target_set}'.")
+
+    def execute(self, grs, llm, prompts, embedder, **global_kwargs) -> None:
+        raise NotImplementedError("Synchronous execute not fully implemented for ScoreOp sketch.")
+
+
+class KeepBestOp(GoTOperation):
+    """Selects the top N nodes based on score."""
+
+    async def execute_async(self, grs, llm, prompts, embedder, semaphore, **global_kwargs) -> None:
+        """Selects best nodes (synchronous logic sufficient)."""
+        self.execute(grs, llm, prompts, embedder, **global_kwargs)
+
+    def execute(self, grs, llm, prompts, embedder, **global_kwargs) -> None:
+        """Selects best nodes."""
+        n_best = self.params.get("N", 1)
+        target_set = self.params.get("target_set", "scored")  # Operate on previously scored nodes
+        output_set = self.params.get("output_set", "frontier")  # Update the main frontier
+
+        nodes_to_consider = grs.get_active_set(target_set)
+        nodes_to_consider.sort(key=lambda n: n.score, reverse=True)
+        best_nodes = nodes_to_consider[:n_best]
+
+        grs.set_active_set(output_set, best_nodes)
+        logger.info(f"KeepBestOp selected top {len(best_nodes)} nodes into set '{output_set}'.")
+
+
+# --- Main GraphOfThoughts Class ---
+class GraphOfThoughts:
+    """Implements the Graph of Thoughts (GoT) prompting framework.
+
+    GoT represents the reasoning process as a graph where nodes are partial solutions
+    (thoughts) and edges represent dependencies or transformations between them.
+    It allows for applying operations like generation, aggregation, scoring,
+    and selection according to a defined Graph of Operations (GoO).
+
+    Reference:
+        Besta et al. (v4; 2024) "Graph of Thoughts: Solving Elaborate Problems with Large Language Models".
+        https://arxiv.org/abs/2308.09687
+    """
 
     def __init__(
         self,
         llm: BaseLLM,
-        max_iters: int = 5,
-        num_branches: int = 5,
-        beam_width: int = 3,
-        merge_threshold: float = 0.9,
-        expand_prompt: str = (
-            "Generate {k} distinct reasoning steps or thoughts to continue "
-            "from the context below. Return as a JSON list of strings.\n"
-            "Context:\n{ctx}\n\nJSON Steps:"
-        ),
-        eval_prompt: str = (
-            "Evaluate the quality of the reasoning path below on a scale of 1-10 "
-            "(1=bad, 10=excellent). Return response as a JSON object with keys "
-            '"score" (int) and "justification" (str).\n'
-            "Path:\n{steps}\n\nJSON Evaluation:"
-        ),
+        embedder: Optional[BaseEmbedder] = None,
         final_answer_format: Literal["text", "json"] = "text",
+        prompts: Optional[Dict[str, str]] = None,
         max_tokens: Optional[int] = None,
         seed: Optional[int] = None,
-        embedder: Optional[BaseEmbedder] = None,
     ) -> None:
-        self.llm = llm
-        self.max_iters = max_iters
-        self.num_branches = num_branches
-        self.beam_width = beam_width
-        self.merge_threshold = merge_threshold
-        self.expand_prompt = expand_prompt
-        self.eval_prompt = eval_prompt
-        self.final_answer_format = final_answer_format
-        self.embedder = embedder or SentenceTransformerEmbedder()
+        """Initializes the GraphOfThoughts strategy handler.
 
+        Args:
+            llm: The language model instance.
+            embedder: Optional embedding model instance for similarity checks.
+            final_answer_format: Whether to extract the final answer as raw text or JSON.
+            prompts: A dictionary mapping operation types (e.g., 'expand', 'evaluate',
+                     'aggregate', 'improve') to their prompt templates.
+            max_tokens: Default maximum tokens for LLM generation calls.
+            seed: Default random seed for LLM calls.
+        """
+        self.llm = llm
+        self.embedder = embedder or SentenceTransformerEmbedder()
+        self.final_answer_format = final_answer_format
+        self.prompts = prompts or self._get_default_prompts()
         self.max_tokens = max_tokens
         self.seed = seed
 
-    def _parse(self, raw: str) -> List[str]:
-        raw_stripped = _strip_fences(raw)
-        try:
-            parsed_obj = json.loads(raw_stripped)
-            thought_list: Optional[List[Any]] = None
-
-            if isinstance(parsed_obj, dict) and "thoughts" in parsed_obj:
-                if isinstance(parsed_obj["thoughts"], list):
-                    thought_list = parsed_obj["thoughts"]
-            elif isinstance(parsed_obj, list):
-                thought_list = parsed_obj
-            else:
-                logger.warning(
-                    f"Parsed JSON is not a list or dict with 'thoughts': {type(parsed_obj)}"
-                )
-                return []
-
-            if thought_list is not None:
-                valid_thoughts = [
-                    str(s).strip()
-                    for s in thought_list
-                    if isinstance(s, (str, int, float)) and str(s).strip()
-                ]
-                return valid_thoughts[: self.num_branches]
-            else:
-                return []
-
-        except json.JSONDecodeError as e:
-            logger.error(
-                "Failed to parse expansion JSON: %s\nRaw Stripped: %s", e, raw_stripped[:200]
-            )
-            return []
-        except Exception as e:
-            logger.error("Unexpected error during expansion parsing: %s", e, exc_info=True)
-            return []
-
-    def _evaluate(self, steps: List[str], **kwargs) -> float:
-        if not steps:
-            return 0.0
-        numbered = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(steps))
-        prompt = self.eval_prompt.format(steps=numbered)
-        logger.debug(f"Evaluating node steps (sync) with prompt:\n{prompt}")
-
-        try:
-            result = self.llm.generate_json(
-                prompt,
-                response_model=EvaluationResult,
-                max_tokens=kwargs.pop("max_tokens", self.max_tokens),
-                seed=kwargs.pop("seed", self.seed),
-                **kwargs,
-            )
-            if isinstance(result, EvaluationResult):
-                score = float(result.score)
-                normalized_score = max(0.0, min(1.0, (score - 1.0) / 9.0))
-                logger.debug(
-                    f"Evaluation score: {score} -> Normalized: {normalized_score:.3f}. Justification: {result.justification}"
-                )
-                return normalized_score
-            else:
-                logger.error(f"Evaluation returned unexpected type: {type(result)}")
-                return 0.0
-        except Exception as e:
-            logger.error("Evaluation LLM call failed: %s", e, exc_info=True)
-            return 0.0
-
-    async def _evaluate_async(
-        self, steps: List[str], semaphore: Optional[asyncio.Semaphore] = None, **kwargs
-    ) -> float:
-        if not steps:
-            return 0.0
-        numbered = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(steps))
-        prompt = self.eval_prompt.format(steps=numbered)
-        logger.debug(f"Evaluating node steps (async) with prompt:\n{prompt}")
-
-        local_kwargs = kwargs.copy()
-        gen_args = {
-            "response_model": EvaluationResult,
-            "max_tokens": local_kwargs.pop("max_tokens", self.max_tokens),
-            "seed": local_kwargs.pop("seed", self.seed),
-            **local_kwargs,
+    def _get_default_prompts(self) -> Dict[str, str]:
+        """Provides default prompt templates."""
+        return {
+            "expand": (
+                "Generate {k} distinct reasoning steps or thoughts to continue "
+                "from the context below. Return ONLY a JSON object with a SINGLE KEY named 'thoughts' "
+                "whose value is a list of strings.\n"
+                "Context:\n{ctx}\n\nJSON Output:"
+            ),
+            "evaluate": (
+                "Evaluate the quality of the reasoning path below on a scale of 1-10 "
+                "(1=bad, 10=excellent). Return response as a JSON object with keys "
+                '"score" (int) and "justification" (str).\n'
+                "Path:\n{steps}\n\nJSON Evaluation:"
+            ),
+            "aggregate": (
+                "Combine the information from the following inputs into {k} synthesized thought(s). "
+                "Maximize coherence and completeness. Return as a JSON list of strings.\n"
+                "Inputs:\n{context}\n\nJSON Output:"
+            ),
+            "improve": (
+                "Improve the following thought based on the initial query and context. "
+                "Return {k} improved versions as a JSON list of strings.\n"
+                "Original Thought:\n{ctx}\n\nJSON Output:"
+            ),
+            # Add other prompts as needed
         }
 
-        try:
-            if semaphore:
-                async with semaphore:
-                    result = await self.llm.generate_json_async(prompt, **gen_args)
-            else:
-                result = await self.llm.generate_json_async(prompt, **gen_args)
+    def _find_similar_node(
+        self, new_node: GoTNode, nodes_to_check: List[GoTNode], threshold: float
+    ) -> Optional[GoTNode]:
+        """Finds an existing node similar to `new_node` based on embedding similarity.
 
-            if isinstance(result, EvaluationResult):
-                score = float(result.score)
-                normalized_score = max(0.0, min(1.0, (score - 1.0) / 9.0))
-                logger.debug(
-                    f"Async evaluation score: {score} -> Normalized: {normalized_score:.3f}. Justification: {result.justification}"
-                )
-                return normalized_score
-            else:
-                logger.error(f"Async evaluation returned unexpected type: {type(result)}")
-                return 0.0
-        except Exception as e:
-            logger.error("Async evaluation LLM call failed: %s", e, exc_info=True)
-            return 0.0
+        Args:
+            new_node: The node to check for similarity.
+            nodes_to_check: A list of existing nodes to compare against.
+            threshold: The cosine similarity threshold for merging.
 
-    def _find_similar_node(self, new_node: _Node, nodes_to_check: List[_Node]) -> Optional[_Node]:
-        if new_node.embed is None:
-            logger.debug(f"Skipping similarity check for node {new_node.id} (no embedding).")
+        Returns:
+            The similar node if found above the threshold, otherwise None.
+        """
+        if not self.embedder or new_node.embed is None:
+            logger.debug(
+                f"Skipping similarity check for node {new_node.id} (no embedder or embedding)."
+            )
             return None
 
         new_norm = np.linalg.norm(new_node.embed)
-        if new_norm == 0:
+        if new_norm < 1e-9:
             logger.debug(f"Skipping similarity check for node {new_node.id} (zero norm embedding).")
             return None
 
@@ -237,315 +570,128 @@ class GraphOfThoughts:
                 continue
 
             other_norm = np.linalg.norm(other.embed)
-            if other_norm == 0 or new_node.is_ancestor(other):
+            if other_norm < 1e-9 or new_node.is_ancestor(other):
                 continue
 
             try:
-                dot_product = np.dot(new_node.embed.flatten(), other.embed.flatten())
+                embed1 = new_node.embed.ravel()
+                embed2 = other.embed.ravel()
+                if embed1.shape != embed2.shape:
+                    logger.warning(f"Embedding shape mismatch: {embed1.shape} vs {embed2.shape}")
+                    continue
+
+                dot_product = np.dot(embed1, embed2)
                 sim = float(dot_product / (new_norm * other_norm))
             except ValueError as e:
                 logger.warning(
-                    f"Error calculating similarity between node {new_node.id} and {other.id}: {e}"
+                    f"Error calculating similarity between node {new_node.id} ({embed1.shape}) and {other.id} ({embed2.shape}): {e}"
                 )
                 continue
 
-            if sim > self.merge_threshold:
+            if sim > threshold:
                 logger.info(
-                    f"Merging node {new_node.id} into similar node {other.id} (similarity: {sim:.3f})"
+                    f"Potential merge: node {new_node.id} similar to node {other.id} (similarity: {sim:.3f})"
                 )
                 return other
-
         return None
 
-    def run(self, question: str, **kwargs) -> str:
-        GraphOfThoughts._Node._id_counter = 0
-        root = self._Node([question], embedder=self.embedder)
-        frontier = [root]
-        all_nodes = {root.id: root}
-
-        logger.info(
-            f"Starting GoT run. Max iterations: {self.max_iters}, Beam width: {self.beam_width}"
-        )
-
-        for iter_num in range(self.max_iters):
-            logger.info(f"--- GoT Iteration {iter_num + 1}/{self.max_iters} ---")
-            logger.debug(f"Frontier size: {len(frontier)}. Nodes: {[n.id for n in frontier]}")
-            if not frontier:
-                logger.info("Frontier is empty. Stopping iterations.")
-                break
-
-            expansion_results: Dict[int, List[str]] = {}
-            logger.info(f"Expanding {len(frontier)} nodes in the frontier...")
-            for node in frontier:
-                ctx = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(node.steps))
-                prompt = self.expand_prompt.format(k=self.num_branches, ctx=ctx)
-                exps: List[str] = []
-
-                try:
-                    local_kwargs = kwargs.copy()
-                    gen_seed = (self.seed + iter_num + node.id) if self.seed is not None else None
-                    raw = self.llm.generate(
-                        prompt,
-                        max_tokens=local_kwargs.pop("max_tokens", self.max_tokens),
-                        seed=gen_seed,
-                        **local_kwargs,
-                    )
-                    exps = self._parse(raw)
-                    logger.debug(f"Node {node.id} expanded into {len(exps)} thoughts.")
-                except Exception as e:
-                    logger.error(f"Expansion failed for node {node.id}: {e}", exc_info=True)
-                    exps = []
-
-                expansion_results[node.id] = exps
-
-            newly_added: List[GraphOfThoughts._Node] = []
-            for node in frontier:
-                for step in expansion_results.get(node.id, []):
-                    new_node = self._Node(
-                        [*node.steps, step], embedder=self.embedder, parents=[node]
-                    )
-                    similar = self._find_similar_node(new_node, list(all_nodes.values()))
-
-                    if similar:
-                        if node not in similar.parents:
-                            similar.parents.append(node)
-                            logger.debug(
-                                f"Added node {node.id} as parent to existing node {similar.id}"
-                            )
-                        continue
-                    else:
-                        node.children.append(new_node)
-                        all_nodes[new_node.id] = new_node
-                        newly_added.append(new_node)
-                        logger.debug(f"Added new node {new_node.id} from parent {node.id}")
-
-            if not newly_added:
-                logger.info("No new nodes were added in this iteration. Stopping.")
-                break
-
-            logger.info(f"Evaluating {len(newly_added)} newly added nodes...")
-            scored_nodes: List[Tuple[float, GraphOfThoughts._Node]] = []
-            for n in newly_added:
-                node_score = self._evaluate(n.steps, **kwargs)
-                n.visits += 1
-                n.score_sum += node_score
-                scored_nodes.append((n.score(), n))
-
-            scored_nodes.sort(key=lambda x: x[0], reverse=True)
-            frontier = [node for score, node in scored_nodes[: self.beam_width]]
-            logger.info(
-                f"Selected top {len(frontier)} nodes for next frontier (Beam Width: {self.beam_width})."
-            )
-
-            if not frontier:
-                logger.info("Frontier became empty after pruning. Stopping.")
-                break
-
-        final_candidates = frontier or list(all_nodes.values())
-        if not final_candidates:
-            logger.error("No candidate nodes found at the end of GoT run.")
-            return "Error: No reasoning paths generated."
-
-        best_node = max(final_candidates, key=lambda n: n.score())
-        logger.info(f"Selected best node: {best_node}")
-
-        reasoning = (
-            best_node.steps[1:]
-            if len(best_node.steps) > 1
-            else ["No intermediate steps generated."]
-        )
-        numbered_reasoning = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(reasoning))
-        final_prompt = (
-            f"Given reasoning steps:\n{numbered_reasoning}\n\nAnswer the question: {question}"
-        )
-        logger.debug(f"Final prompt:\n{final_prompt}")
-
-        try:
-            local_kwargs_final = kwargs.copy()
-            if self.final_answer_format == "json":
-                json_req = (
-                    final_prompt
-                    + '\n\nReturn exactly one JSON object with a single key "final_answer" whose value is the answer string.\n\nJSON Answer:'
-                )
-                parsed = self.llm.generate_json(
-                    json_req,
-                    response_model=ExtractedAnswer,
-                    max_tokens=local_kwargs_final.pop("max_tokens", self.max_tokens),
-                    seed=local_kwargs_final.pop("seed", self.seed),
-                    **local_kwargs_final,
-                )
-                final_answer_value = parsed.final_answer
-                if isinstance(final_answer_value, str):
-                    return final_answer_value.strip()
-                elif final_answer_value is not None:
-                    return str(final_answer_value)
-                else:
-                    logger.warning("GoT final JSON extraction returned None.")
-                    return ""
-            else:
-                return self.llm.generate(
-                    final_prompt,
-                    max_tokens=local_kwargs_final.pop("max_tokens", self.max_tokens),
-                    seed=local_kwargs_final.pop("seed", self.seed),
-                    **local_kwargs_final,
-                ).strip()
-        except Exception as e:
-            logger.error("Final answer generation failed: %s", e, exc_info=True)
-            return "Error generating final answer."
+    def _create_operation(self, op_name: str, params: Dict) -> GoTOperation:
+        """Factory method to create operation instances."""
+        if op_name == "Generate":
+            return GenerateOp(**params)
+        elif op_name == "Aggregate":
+            return AggregateOp(**params)
+        elif op_name == "Improve":
+            raise NotImplementedError(f"Operation '{op_name}' not implemented yet.")
+        elif op_name == "Score":
+            return ScoreOp(**params)
+        elif op_name == "KeepBest":
+            return KeepBestOp(**params)
+        # Add other operations like Validate, etc.
+        else:
+            raise ValueError(f"Unknown GoT operation: {op_name}")
 
     async def run_async(
-        self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs
+        self,
+        question: str,
+        graph_of_operations: List[Tuple[str, Dict]],
+        semaphore: Optional[asyncio.Semaphore] = None,
+        **kwargs: Any,
     ) -> str:
-        GraphOfThoughts._Node._id_counter = 0
-        root = self._Node([question], embedder=self.embedder)
-        frontier = [root]
-        all_nodes = {root.id: root}
+        """Asynchronously executes the Graph of Thoughts reasoning process based on a GoO.
 
-        logger.info(
-            f"Starting GoT run (async). Max iterations: {self.max_iters}, Beam width: {self.beam_width}"
-        )
+        Args:
+            question: The initial question or problem statement.
+            graph_of_operations: A list defining the sequence of operations and their parameters.
+                                 Example: [('Generate', {'k': 5, 'output_set': 'thoughts1'}),
+                                           ('Score', {'target_set': 'thoughts1'}),
+                                           ('KeepBest', {'N': 3, 'target_set': 'thoughts1', 'output_set': 'frontier'}),
+                                           ('Aggregate', {'target_sets': ['frontier'], 'k': 1, 'output_set': 'aggregated'}),
+                                           ...]
+            semaphore: Optional asyncio.Semaphore to limit concurrent LLM calls.
+            **kwargs: Additional arguments passed to internal LLM calls (e.g., seed, max_tokens).
 
-        for iter_num in range(self.max_iters):
-            logger.info(f"--- GoT Iteration {iter_num + 1}/{self.max_iters} (async) ---")
-            logger.debug(f"Frontier size: {len(frontier)}. Nodes: {[n.id for n in frontier]}")
-            if not frontier:
-                logger.info("Frontier is empty. Stopping iterations.")
-                break
+        Returns:
+            The final answer string generated by the LLM based on the best reasoning path found.
+            Returns an error message if no paths are generated or the final generation fails.
+        """
+        GoTNode._id_counter = 0
+        root = GoTNode([question], embedder=None, text_content=question)  # Embed root optionally
+        grs = GraphReasoningState(root)
 
-            logger.info(f"Expanding {len(frontier)} nodes in the frontier asynchronously...")
+        global_llm_params = {
+            "seed": kwargs.pop("seed", self.seed),
+            "max_tokens": kwargs.pop("max_tokens", self.max_tokens),
+            **kwargs,  # Pass remaining kwargs
+        }
 
-            async def expand_task(node: GraphOfThoughts._Node) -> Tuple[int, List[str]]:
-                ctx = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(node.steps))
-                prompt = self.expand_prompt.format(k=self.num_branches, ctx=ctx)
-                exps: List[str] = []
+        logger.info(f"Starting GoT run (async) with {len(graph_of_operations)} operations.")
 
-                try:
-                    local_kwargs = kwargs.copy()
-                    gen_seed = (self.seed + iter_num + node.id) if self.seed is not None else None
-                    gen_args = {
-                        "max_tokens": local_kwargs.pop("max_tokens", self.max_tokens),
-                        "seed": gen_seed,
-                        **local_kwargs,
-                    }
-                    if semaphore:
-                        async with semaphore:
-                            raw = await self.llm.generate_async(prompt, **gen_args)
-                    else:
-                        raw = await self.llm.generate_async(prompt, **gen_args)
-                    exps = self._parse(raw)
-                    logger.debug(f"Node {node.id} expanded into {len(exps)} thoughts (async).")
-                except Exception as e:
-                    logger.error(f"Async expansion failed for node {node.id}: {e}", exc_info=True)
-                    exps = []
+        for op_name, op_params in graph_of_operations:
+            logger.info(f"Executing GoO Step: {op_name} with params {op_params}")
+            try:
+                operation = self._create_operation(op_name, op_params)
+                await operation.execute_async(
+                    grs=grs,
+                    llm=self.llm,
+                    prompts=self.prompts,
+                    embedder=self.embedder,
+                    semaphore=semaphore,
+                    **global_llm_params,
+                )
+            except Exception as e:
+                logger.error(f"Error executing operation {op_name}: {e}", exc_info=True)
+                return f"Error during operation {op_name}"
 
-                return node.id, exps
+            # Optional: Add logging for GRS state after each step
+            # logger.debug(f"GRS after {op_name}: {grs.active_sets}")
 
-            results = await asyncio.gather(
-                *(expand_task(n) for n in frontier), return_exceptions=True
-            )
-            expansion_results: Dict[int, List[str]] = {}
-            for i, res in enumerate(results):
-                node_id = frontier[i].id
-                if isinstance(res, Exception):
-                    logger.error(f"Async expansion task failed for node {node_id}: {res}")
-                    expansion_results[node_id] = []
-                elif isinstance(res, tuple) and len(res) == 2:
-                    expansion_results[res[0]] = res[1]
-                else:
-                    logger.error(
-                        f"Unexpected result type from expand_task for node {node_id}: {type(res)}"
-                    )
-                    expansion_results[node_id] = []
+        # Determine final result - assumes the relevant result is in 'frontier' or last output set
+        final_candidates = grs.get_active_set(
+            "frontier"
+        )  # Or use a specific output set name from GoO
+        if not final_candidates:
+            # Fallback if frontier is empty - check last known generated/aggregated set etc.
+            # This needs robust handling based on GoO structure
+            logger.warning("Frontier is empty, checking all nodes...")
+            final_candidates = list(grs.all_nodes.values())
 
-            newly_added: List[GraphOfThoughts._Node] = []
-            for nid, steps in expansion_results.items():
-                parent = all_nodes.get(nid)
-                if parent is None:
-                    logger.warning(f"Parent node {nid} not found, cannot add children.")
-                    continue
-
-                for step in steps:
-                    new_node = self._Node(
-                        [*parent.steps, step], embedder=self.embedder, parents=[parent]
-                    )
-                    similar = self._find_similar_node(new_node, list(all_nodes.values()))
-                    if similar:
-                        if parent not in similar.parents:
-                            similar.parents.append(parent)
-                        continue
-                    parent.children.append(new_node)
-                    all_nodes[new_node.id] = new_node
-                    newly_added.append(new_node)
-
-            if not newly_added:
-                logger.info("No new nodes were added in this iteration (async). Stopping.")
-                break
-
-            logger.info(f"Evaluating {len(newly_added)} newly added nodes asynchronously...")
-
-            async def eval_task(node: GraphOfThoughts._Node) -> Tuple[int, float]:
-                node_score = await self._evaluate_async(node.steps, semaphore, **kwargs)
-                return node.id, node_score
-
-            score_results = await asyncio.gather(
-                *(eval_task(n) for n in newly_added), return_exceptions=True
-            )
-
-            scored_nodes: List[Tuple[float, GraphOfThoughts._Node]] = []
-            processed_ids = set()
-            for i, res in enumerate(score_results):
-                node_id = newly_added[i].id
-                processed_ids.add(node_id)
-                node = all_nodes.get(node_id)
-                if node is None:
-                    continue
-
-                if isinstance(res, Exception):
-                    logger.error(f"Async evaluation task failed for node {node_id}: {res}")
-                    node_score = 0.0
-                elif isinstance(res, tuple) and len(res) == 2:
-                    node_score = res[1]
-                else:
-                    logger.error(
-                        f"Unexpected result type from eval_task for node {node_id}: {type(res)}"
-                    )
-                    node_score = 0.0
-
-                node.visits += 1
-                node.score_sum += node_score
-                scored_nodes.append((node.score(), node))
-
-            scored_nodes.sort(key=lambda x: x[0], reverse=True)
-            frontier = [node for score, node in scored_nodes[: self.beam_width]]
-            logger.info(
-                f"Selected top {len(frontier)} nodes for next frontier (Async Beam Width: {self.beam_width})."
-            )
-
-            if not frontier:
-                logger.info("Frontier became empty after pruning (async). Stopping.")
-                break
-
-        final_candidates = frontier or list(all_nodes.values())
         if not final_candidates:
             logger.error("No candidate nodes found at the end of GoT run (async).")
             return "Error: No reasoning paths generated."
 
-        best_node = max(final_candidates, key=lambda n: n.score())
+        # Select best node based on score (or other criteria if defined)
+        best_node = max(final_candidates, key=lambda n: n.score)
         logger.info(f"Selected best node (async): {best_node}")
 
-        reasoning = (
-            best_node.steps[1:]
-            if len(best_node.steps) > 1
-            else ["No intermediate steps generated."]
-        )
-        numbered_reasoning = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(reasoning))
-        final_prompt = (
-            f"Given reasoning steps:\n{numbered_reasoning}\n\nAnswer the question: {question}"
-        )
+        # Use the best node's text_content for the final answer generation
+        reasoning_context = best_node.text_content or "No final thought content available."
+        # Or, reconstruct path if needed: numbered_reasoning = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(best_node.steps))
+        final_prompt = f"Based on the final reasoning or result:\n{reasoning_context}\n\nAnswer the original question: {question}"
         logger.debug(f"Final prompt (async):\n{final_prompt}")
 
         try:
-            local_kwargs_final = kwargs.copy()
+            local_kwargs_final = global_llm_params.copy()
             final_seed = local_kwargs_final.pop("seed", self.seed)
             final_max_tokens = local_kwargs_final.pop("max_tokens", self.max_tokens)
 
@@ -587,3 +733,11 @@ class GraphOfThoughts:
         except Exception as e:
             logger.error("Final async answer generation failed: %s", e, exc_info=True)
             return "Error generating final async answer."
+
+    def run(self, question: str, graph_of_operations: List[Tuple[str, Dict]], **kwargs: Any) -> str:
+        """Synchronous execution is not supported for GraphOfThoughts."""
+        raise NotImplementedError(
+            "Synchronous execution (run()) is not supported for GraphOfThoughts due to its "
+            "reliance on internal async operations and potential event loop conflicts. "
+            "Please use the asynchronous run_async() method within an async context instead."
+        )

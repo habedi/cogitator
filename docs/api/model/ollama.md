@@ -1,4 +1,4 @@
-# cogitator.model.ollama
+# Ollama LLM Implementation
 
 Implementation of the BaseLLM interface for Ollama models.
 

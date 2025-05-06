@@ -1,0 +1,76 @@
+digraph SimplifiedCogitatorWorkflow {
+fontname = "Helvetica,Arial,sans-serif"
+layout = dot
+rankdir = LR
+ranksep = 0.9;
+nodesep = 0.7;
+splines = true;
+compound = true;
+
+node [
+fontname = "Helvetica,Arial,sans-serif",
+shape = box,
+style = "filled,rounded",
+color = "grey",
+fillcolor = "white",
+penwidth = 1
+]
+edge [
+fontname = "Helvetica,Arial,sans-serif",
+color = "black",
+fontsize = 8,
+labeldistance = 2.0
+]
+
+subgraph cluster_input {
+label = "Inputs"
+style = "dashed"
+color = "lightgrey"
+margin = 18
+question [label = "1. Question / Prompt", fillcolor = "oldlace"]
+config [label = "2. Configuration\n(Strategy Choice, LLM Choice)", fillcolor = "oldlace"]
+}
+
+subgraph cluster_core {
+label = "Cogitator"
+style = "dashed"
+color = "lightgrey"
+margin = 18
+strategy [label = <<table border="0" cellborder="0" cellspacing="0" cellpadding="3">
+<tr><td align="center"><b>3. Selected CoT Strategy</b></td></tr>
+<tr><td align="left" balign="left">Orchestrates steps:</td></tr>
+<tr><td align="left" balign="left">- Prompt Formatting</td></tr>
+<tr><td align="left" balign="left">- LLM Calls</td></tr>
+<tr><td align="left" balign="left">- Intermediate Processing</td></tr>
+<tr><td align="left" balign="left">  (Decomposition, Expansion,</td></tr>
+<tr><td align="left" balign="left">   Evaluation, Extraction,</td></tr>
+<tr><td align="left" balign="left">   Embedding, Clustering...)</td></tr>
+</table>>, fillcolor ="lightblue", shape = box]
+}
+
+subgraph cluster_external {
+label = "LLM Service"
+style = "dashed"
+color = "lightgrey"
+margin = 18
+llm [label = "4. Model Provider\n(e.g., OpenAI API / Ollama)", fillcolor ="oldlace"]
+}
+
+subgraph cluster_output {
+label = "Output"
+style = "dashed"
+color = "lightgrey"
+margin = 18
+final_answer [label = "5. Final Answer", fillcolor = "oldlace"]
+}
+
+question -> strategy [lhead = cluster_core]
+config -> strategy [lhead = cluster_core]
+config -> llm [lhead= cluster_external]
+
+strategy -> llm [minlen = 2]
+llm -> strategy [minlen = 2]
+
+strategy -> final_answer [lhead = cluster_output, ltail = cluster_core, minlen = 2]
+
+}

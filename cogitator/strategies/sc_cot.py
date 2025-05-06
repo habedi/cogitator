@@ -1,3 +1,5 @@
+"""Implements the Self-Consistency Chain-of-Thought (SC-CoT) strategy."""
+
 import asyncio
 import logging
 import re
@@ -11,6 +13,17 @@ logger = logging.getLogger(__name__)
 
 
 class SelfConsistency:
+    """Implements the Self-Consistency Chain-of-Thought (SC-CoT) strategy.
+
+    Self-Consistency improves CoT prompting by generating multiple diverse
+    reasoning paths (using sampling with temperature > 0) and then selecting
+    the most consistent answer among the paths via majority voting.
+
+    Reference:
+        Wang et al. (v4; 2023) "Self-Consistency Improves Chain of Thought Reasoning in Language Models".
+        https://arxiv.org/abs/2203.11171
+    """
+
     def __init__(
         self,
         llm: BaseLLM,
@@ -23,6 +36,22 @@ class SelfConsistency:
         seed: Optional[int] = None,
         **gen_kwargs: Any,
     ) -> None:
+        """Initializes the SelfConsistency strategy handler.
+
+        Args:
+            llm: The language model instance.
+            n_samples: The number of reasoning paths (samples) to generate.
+            temperature: Sampling temperature for generating diverse paths. Should be > 0.
+            max_tokens: Maximum tokens for each generated reasoning path.
+            stop: Optional stop sequences for LLM generation.
+            internal_extraction_format: Method for extracting the final answer from
+                                        each CoT path ('heuristic' or 'json').
+            answer_extraction_prompt: Prompt template used only if `internal_extraction_format`
+                                      is 'json'. Must include {cot}. Expects JSON output
+                                      matching ExtractedAnswer schema.
+            seed: Base random seed for LLM sampling (each sample may use seed + i).
+            **gen_kwargs: Additional default keyword arguments for LLM generation calls.
+        """
         self.llm = llm
         self.n_samples = n_samples
         self.temperature = temperature
@@ -36,13 +65,24 @@ class SelfConsistency:
             self.answer_extraction_prompt = (
                 answer_extraction_prompt
                 or "Analyze the following reasoning chain and extract the final numerical or short answer. "
-                   "Return the result as a JSON object with a single key 'final_answer' containing the answer as a string.\n\n"
-                   "Reasoning Chain:\n{cot}\n\nJSON Answer:"
+                "Return the result as a JSON object with a single key 'final_answer' containing the answer as a string.\n\n"
+                "Reasoning Chain:\n{cot}\n\nJSON Answer:"
             )
         else:
             self.answer_extraction_prompt = None
 
     def _extract_answer_heuristic(self, cot: str) -> str:
+        """Extracts the final answer from a CoT string using heuristics.
+
+        Searches for common patterns like "answer is X", lines starting with "Answer:",
+        numeric lines, etc., working from the end of the CoT string upwards.
+
+        Args:
+            cot: The Chain-of-Thought reasoning string.
+
+        Returns:
+            The extracted answer string, or the last line as a fallback.
+        """
         lines = cot.strip().splitlines()
         for line in reversed(lines):
             text = line.strip().rstrip(".")
@@ -85,7 +125,19 @@ class SelfConsistency:
         logger.debug(f"Heuristically extracted answer (Fallback): '{fallback_answer}'")
         return fallback_answer
 
-    def _extract_answer_json(self, cot: str, **kwargs) -> str:
+    def _extract_answer_json(self, cot: str, **kwargs: Any) -> str:
+        """Extracts the final answer using an LLM call with JSON parsing.
+
+        Uses the `answer_extraction_prompt` and expects a JSON response matching
+        the `ExtractedAnswer` schema. Falls back to heuristic extraction on failure.
+
+        Args:
+            cot: The Chain-of-Thought reasoning string.
+            **kwargs: Additional arguments passed to the LLM `generate_json` call.
+
+        Returns:
+            The extracted answer string.
+        """
         if not self.answer_extraction_prompt:
             logger.warning("JSON extraction requested but prompt is not configured.")
             return self._extract_answer_heuristic(cot)
@@ -109,7 +161,18 @@ class SelfConsistency:
         logger.warning("JSON extraction failed, falling back to heuristic.")
         return self._extract_answer_heuristic(cot)
 
-    async def _extract_answer_json_async(self, cot: str, **kwargs) -> str:
+    async def _extract_answer_json_async(self, cot: str, **kwargs: Any) -> str:
+        """Asynchronously extracts the final answer using an LLM call with JSON parsing.
+
+        Similar to `_extract_answer_json` but uses async LLM calls.
+
+        Args:
+            cot: The Chain-of-Thought reasoning string.
+            **kwargs: Additional arguments passed to the async LLM `generate_json_async` call.
+
+        Returns:
+            The extracted answer string.
+        """
         if not self.answer_extraction_prompt:
             logger.warning("Async JSON extraction requested but prompt is not configured.")
             return self._extract_answer_heuristic(cot)
@@ -133,17 +196,54 @@ class SelfConsistency:
         logger.warning("Async JSON extraction failed, falling back to heuristic.")
         return self._extract_answer_heuristic(cot)
 
-    def extract_answer(self, cot: str, **kwargs) -> str:
+    def extract_answer(self, cot: str, **kwargs: Any) -> str:
+        """Extracts the final answer from a CoT string based on the configured method.
+
+        Delegates to either `_extract_answer_heuristic` or `_extract_answer_json`.
+
+        Args:
+            cot: The Chain-of-Thought reasoning string.
+            **kwargs: Arguments passed to the underlying extraction method (if JSON).
+
+        Returns:
+            The extracted answer string.
+        """
         if self.internal_extraction_format == "json":
             return self._extract_answer_json(cot, **kwargs)
         return self._extract_answer_heuristic(cot)
 
-    async def extract_answer_async(self, cot: str, **kwargs) -> str:
+    async def extract_answer_async(self, cot: str, **kwargs: Any) -> str:
+        """Asynchronously extracts the final answer based on the configured method.
+
+        Delegates to `_extract_answer_heuristic` or `_extract_answer_json_async`.
+
+        Args:
+            cot: The Chain-of-Thought reasoning string.
+            **kwargs: Arguments passed to the underlying async extraction method (if JSON).
+
+        Returns:
+            The extracted answer string.
+        """
         if self.internal_extraction_format == "json":
             return await self._extract_answer_json_async(cot, **kwargs)
         return self._extract_answer_heuristic(cot)
 
-    def run(self, prompt: str, **kwargs) -> str:
+    def run(self, prompt: str, **kwargs: Any) -> str:
+        """Executes the Self-Consistency strategy.
+
+        Generates `n_samples` reasoning paths using the LLM with the specified
+        temperature. Extracts the final answer from each path and returns the
+        most frequent answer (majority vote).
+
+        Args:
+            prompt: The input prompt for the LLM.
+            **kwargs: Additional arguments passed to the LLM generation and
+                      answer extraction calls.
+
+        Returns:
+            The most consistent answer string among the generated paths, or an
+            empty string if no valid answers are generated.
+        """
         answers: List[str] = []
         combined_kwargs = {**self.gen_kwargs, **kwargs}
 
@@ -182,8 +282,22 @@ class SelfConsistency:
             return ""
 
     async def run_async(
-        self, prompt: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs
+        self, prompt: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
     ) -> str:
+        """Asynchronously executes the Self-Consistency strategy.
+
+        Generates `n_samples` reasoning paths concurrently using async LLM calls.
+        Extracts answers asynchronously and returns the majority vote answer.
+
+        Args:
+            prompt: The input prompt for the LLM.
+            semaphore: Optional asyncio.Semaphore to limit concurrent LLM calls.
+            **kwargs: Additional arguments passed to the async LLM generation and
+                      answer extraction calls.
+
+        Returns:
+            The most consistent answer string, or an empty string if none are generated.
+        """
         combined_kwargs = {**self.gen_kwargs, **kwargs}
 
         async def sample(i: int) -> Optional[str]:
@@ -198,8 +312,9 @@ class SelfConsistency:
             }
             extraction_kwargs = kwargs.copy()
 
-            if semaphore:
-                await semaphore.acquire()
+            task_semaphore = semaphore
+            if task_semaphore:
+                await task_semaphore.acquire()
             try:
                 cot = await self.llm.generate_async(prompt, **gen_args)
                 logger.debug(f"Raw async CoT sample {i}: {cot}")
@@ -211,8 +326,8 @@ class SelfConsistency:
                 logger.error(f"Error during async SC sample {i}: {e}", exc_info=True)
                 return None
             finally:
-                if semaphore:
-                    semaphore.release()
+                if task_semaphore:
+                    task_semaphore.release()
 
         results = await asyncio.gather(*(sample(i) for i in range(self.n_samples)))
         answers = [a for a in results if a is not None and a != ""]
@@ -230,7 +345,9 @@ class SelfConsistency:
             return ""
 
     def run_stream(self, prompt: str) -> Iterator[str]:
+        """Streaming is not supported for Self-Consistency."""
         raise NotImplementedError("Streaming not supported for SelfConsistency.")
 
     async def run_stream_async(self, prompt: str) -> AsyncIterator[str]:
+        """Streaming is not supported for Self-Consistency."""
         raise NotImplementedError("Streaming not supported for SelfConsistency.")
