@@ -132,7 +132,7 @@ See the example `benches.yml` in the repository for detailed options.
 To run the benchmarks, you might want to install the development dependencies along with Cogitator itself.
 
 ```bash
-poetry install --with dev
+poetry install --all-extras # Needs Poetry 2.0+
 ```
 
 Additionally, any model used in the benchmarks must be available.

@@ -41,9 +41,9 @@ To run the unit tests and benchmarks, development dependencies are needed that c
 ```bash
 git clone https://github.com/habedi/cogitator && cd cogitator
 
-# Set up Python environment
+# Set up Python environment (use Poetry 2.0+)
 pip install poetry
-poetry install --with dev
+poetry install --all-extras
 
 # Run the tests to make sure everything is working (optional)
 poetry run pytest

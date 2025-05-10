@@ -26,7 +26,7 @@ setup: ## Install system dependencies
 
 .PHONY: install
 install: ## Install Python dependencies
-	$(POETRY) install --with dev
+	$(POETRY) install --all-extras
 
 # Testing and linting
 .PHONY: test
