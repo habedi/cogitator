@@ -113,7 +113,7 @@ line-length = 100
 indent-width = 4
 src = ["cogitator", "examples"]
 target-version = "py310"
-unsafe-fixes = true
+unsafe-fixes = false
 
 [tool.ruff.lint]
 select = ["ANN", "E", "F", "I", "W", "B", "RUF", "SIM", "C90"]
