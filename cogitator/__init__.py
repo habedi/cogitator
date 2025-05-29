@@ -6,7 +6,7 @@ embedding models, clustering algorithms, and data validation schemas.
 It aims to make it easier to try and integrate CoT methods into AI applications.
 """
 
-import importlib
+from importlib.metadata import version, PackageNotFoundError
 import logging
 
 from .clustering import BaseClusterer, KMeansClusterer
@@ -29,9 +29,10 @@ from .strategies import (
 from .utils import accuracy, approx_token_length, count_steps, exact_match
 
 _logger = logging.getLogger(__name__)
+
 try:
-    __version__ = importlib.metadata.version("cogitator")
-except importlib.metadata.PackageNotFoundError:
+    __version__ = version("cogitator")
+except PackageNotFoundError:
     __version__ = "0.0.0-unknown"
     _logger.warning(
         "Could not determine package version using importlib.metadata. "
