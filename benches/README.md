@@ -1,6 +1,6 @@
 ## Benchmarks
 
-Benchmarks are primarily run using the `benches/run.py` script, which handles the generation phase.
+Benchmarks are run using the `benches/run.py` script, which handles the generation phase.
 A separate script, `benches/evaluate.py`, is used afterward to calculate accuracy from the generated results.
 
 Run the generation script from the project root directory:
@@ -24,7 +24,8 @@ Available Options for `run.py`:
 * `--concurrency <number>`: Max concurrent LLM requests when using `--use-async` (default: `3`).
 * `--use-json-strategies`: Use JSON mode within strategies where applicable (LtM, GoT, SC) (default: disabled).
 * `--output-file <path>`: File to save raw generation results in JSONL format (default: `benchmark_results.jsonl`).
-* `--debug`: Enable debug logging for more verbose output.
+* `--debug`: Enable debug-level logging for more verbose output.
+* `--help`: Show help message for all available options.
 
 Check out OpenAI's [API documentation](https://platform.openai.com/docs/api-reference) for more details on the models
 and their capabilities. Use `ollama list` to see the available models for the `ollama` provider.
@@ -131,7 +132,7 @@ See the example `benches.yml` in the repository for detailed options.
 To run the benchmarks, you might want to install the development dependencies along with Cogitator itself.
 
 ```bash
-poetry install --with dev
+poetry install --all-extras # Needs Poetry 2.0+
 ```
 
 Additionally, any model used in the benchmarks must be available.

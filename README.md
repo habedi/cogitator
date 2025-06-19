@@ -11,7 +11,7 @@
 [![Code Quality](https://img.shields.io/codefactor/grade/github/habedi/cogitator?style=flat&label=code%20quality&labelColor=333333&logo=codefactor&logoColor=white)](https://www.codefactor.io/repository/github/habedi/cogitator)
 [![Python Version](https://img.shields.io/badge/python-%3E=3.10-3776ab?style=flat&labelColor=333333&logo=python&logoColor=white)](https://github.com/habedi/cogitator)
 [![PyPI Version](https://img.shields.io/pypi/v/cogitator.svg?style=flat&label=pypi&labelColor=333333&logo=pypi&logoColor=white&color=3775a9)](https://pypi.org/project/cogitator)
-[![Downloads](https://img.shields.io/pypi/dm/cogitator.svg?style=flat&label=downloads&labelColor=333333&logo=pypi&logoColor=white&color=cc8400)](https://github.com/habedi/cogitator)
+[![Downloads](https://img.shields.io/pypi/dm/cogitator.svg?style=flat&label=downloads&labelColor=333333&logo=pypi&logoColor=white)](https://github.com/habedi/cogitator)
 <br>
 [![License](https://img.shields.io/badge/license-MIT-00acc1?style=flat&labelColor=333333&logo=open-source-initiative&logoColor=white)](https://github.com/habedi/cogitator/blob/main/LICENSE)
 [![Docs](https://img.shields.io/badge/docs-latest-8ca0d7?style=flat&labelColor=333333&logo=readthedocs&logoColor=white)](https://habedi.github.io/cogitator)
@@ -61,9 +61,9 @@ Or, if you want to install from the latest version with examples and benchmarks 
 ```bash
 git clone https://github.com/habedi/cogitator && cd cogitator
 
-# Set up Python environment
+# Set up Python environment (use Poetry 2.0+)
 pip install poetry
-poetry install --with dev
+poetry install --all-extras
 
 # Run the tests to make sure everything is working (optional)
 poetry run pytest
@@ -90,7 +90,7 @@ except Exception as e:
     print("Please make sure Ollama is running and the model is pulled.")
     exit(1)
 
-# Step 3: Choose a CoT strategies (Self-Consistency in this case)
+# Step 3: Choose a CoT strategy (Self-Consistency in this case)
 # Self-Consistency generates multiple reasoning paths and finds the most common answer
 sc_strategy = SelfConsistency(
     llm,

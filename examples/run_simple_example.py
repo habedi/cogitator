@@ -15,7 +15,7 @@ except Exception as e:
     print("Please make sure Ollama is running and the model is pulled.")
     exit(1)
 
-# Step 3: Choose a CoT strategies (Self-Consistency in this case)
+# Step 3: Choose a CoT strategy (Self-Consistency in this case)
 # Self-Consistency generates multiple reasoning paths and finds the most common answer
 sc_strategy = SelfConsistency(
     llm,

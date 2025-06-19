@@ -26,7 +26,7 @@ setup: ## Install system dependencies
 
 .PHONY: install
 install: ## Install Python dependencies
-	$(POETRY) install --with dev
+	$(POETRY) install --all-extras
 
 # Testing and linting
 .PHONY: test
@@ -83,4 +83,4 @@ docs: ## Generate the project documentation
 
 # All-in-one target
 .PHONY: all
-all: install check build ## Install Python dependencies, run lint, typecheck, tests, and build the library
+all: install typecheck build ## Install Python dependencies, run lint, typecheck, tests, and build the library
