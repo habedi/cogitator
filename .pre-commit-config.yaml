@@ -1,10 +1,42 @@
+default_stages: [ pre-commit, pre-push ]
+default_language_version:
+  python: python3.12
+fail_fast: false
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
+        args: [ --markdown-linebreak-ext=md ]
       - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: detect-private-key
       - id: check-yaml
       - id: check-toml
-      - id: check-added-large-files
-      - id: check-merge-conflict
+      - id: check-json
+      - id: check-docstring-first
+      - id: pretty-format-json
+        args: [ --autofix, --no-sort-keys ]
+
+  - repo: local
+    hooks:
+      - id: format
+        name: format
+        entry: make format
+        language: system
+        pass_filenames: false
+
+      - id: lint
+        name: lint
+        entry: make lint
+        language: system
+        pass_filenames: false
+
+      - id: typecheck
+        name: typecheck
+        entry: make typecheck
+        language: system
+        pass_filenames: false

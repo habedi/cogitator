@@ -84,3 +84,7 @@ docs: ## Generate the project documentation
 # All-in-one target
 .PHONY: all
 all: install typecheck build ## Install Python dependencies, run lint, typecheck, tests, and build the library
+
+.PHONY: precommit
+precommit: ## Run pre-commit hooks manually
+	$(POETRY) run pre-commit run --all-files
