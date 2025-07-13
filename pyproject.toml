@@ -1,6 +1,6 @@
 [project]
 name = "cogitator"
-version = "0.1.1"
+version = "0.1.2"
 description = "A Python toolkit for chain-of-thought prompting"
 readme = "README.md"
 license = { text = "MIT" }

@@ -14,8 +14,8 @@ OPENAI_MODE ?= gpt-4o-mini
 # Help target
 .PHONY: help
 help: ## Show help messages for all available targets
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; \
- 	{printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*## .*$$' Makefile | \
+	awk 'BEGIN {FS = ":.*## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
 # Setup and installation
 .PHONY: setup
@@ -85,6 +85,12 @@ docs: ## Generate the project documentation
 .PHONY: all
 all: install typecheck build ## Install Python dependencies, run lint, typecheck, tests, and build the library
 
-.PHONY: precommit
-precommit: ## Run pre-commit hooks manually
-	$(POETRY) run pre-commit run --all-files
+.PHONY: setup-hooks
+setup-hooks: ## Install Git hooks (pre-commit and pre-push)
+	$(POETRY) run pre-commit install --hook-type pre-commit
+	$(POETRY) run pre-commit install --hook-type pre-push
+	$(POETRY) run pre-commit install
+
+.PHONY: test-hooks
+test-hooks: ## Run Git hooks manually on all files
+	$(POETRY) run pre-commit run --all-files --show-diff-on-failure
