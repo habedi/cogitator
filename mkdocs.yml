@@ -37,20 +37,20 @@ nav:
   - Home: index.md
   - API Reference:
       - LLM Providers:
-          - Base: api/model/base.md
-          - OpenAI: api/model/openai.md
-          - Ollama: api/model/ollama.md
+          - api/model/base.md
+          - api/model/openai.md
+          - api/model/ollama.md
+      - Strategies:
+          - api/strategies/auto_cot.md
+          - api/strategies/cdw_cot.md
+          - api/strategies/graph_of_thoughts.md
+          - api/strategies/least_to_most.md
+          - api/strategies/sc_cot.md
+          - api/strategies/tree_of_thoughts.md
       - Schemas: api/schemas.md
       - Embedding: api/embedding.md
       - Clustering: api/clustering.md
       - Utilities: api/utils.md
-      - Strategies:
-          - AutoCoT: api/strategies/auto_cot.md
-          - CDWCoT: api/strategies/cdw_cot.md
-          - GraphOfThoughts: api/strategies/graph_of_thoughts.md
-          - LeastToMost: api/strategies/least_to_most.md
-          - SelfConsistency: api/strategies/sc_cot.md
-          - TreeOfThoughts: api/strategies/tree_of_thoughts.md
   - Benchmarking: benchmarking.md
   - Contributing: contributing.md
 

@@ -151,10 +151,10 @@ If you use this project in your research, please consider citing using the follo
 }
 ```
 
-### Logo
-
-The logo is named "Cognition" and was originally created by [vectordoodle](https://www.svgrepo.com/author/vectordoodle).
-
 ### License
 
 Cogitator is licensed under the [MIT License](LICENSE).
+
+### Acknowledgements
+
+* The logo is named "Cognition" and was originally created by [vectordoodle](https://www.svgrepo.com/author/vectordoodle).
