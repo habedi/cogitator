@@ -634,8 +634,17 @@ class GraphOfThoughts:
                 return other
         return None
 
-    def _create_operation(self, op_name: str, params: Dict) -> GoTOperation:
+    def _create_operation(
+        self,
+        op_name: str,
+        params: Dict,
+        custom_operations: Optional[Dict[str, "GoTOperation"]] = None,
+    ) -> GoTOperation:
         """Factory method to create operation instances."""
+        if custom_operations and op_name in custom_operations:
+            op_class = custom_operations[op_name]
+            return op_class(**params)
+
         if op_name == "Generate":
             return GenerateOp(**params)
         elif op_name == "Aggregate":
@@ -654,6 +663,7 @@ class GraphOfThoughts:
         self,
         question: str,
         graph_of_operations: List[Tuple[str, Dict]],
+        custom_operations: Optional[Dict[str, "GoTOperation"]] = None,
         semaphore: Optional[asyncio.Semaphore] = None,
         with_trace: bool = False,
         **kwargs: Any,
@@ -668,6 +678,7 @@ class GraphOfThoughts:
                                            ('KeepBest', {'N': 3, 'target_set': 'thoughts1', 'output_set': 'frontier'}),
                                            ('Aggregate', {'target_sets': ['frontier'], 'k': 1, 'output_set': 'aggregated'}),
                                            ...]
+            custom_operations: An optional dictionary mapping names to custom GoTOperation classes.
             semaphore: Optional asyncio.Semaphore to limit concurrent LLM calls.
             with_trace: If True, returns a tuple of (answer, trace).
             **kwargs: Additional arguments passed to internal LLM calls (e.g., seed, max_tokens).
@@ -696,7 +707,7 @@ class GraphOfThoughts:
         for op_name, op_params in graph_of_operations:
             logger.info(f"Executing GoO Step: {op_name} with params {op_params}")
             try:
-                operation = self._create_operation(op_name, op_params)
+                operation = self._create_operation(op_name, op_params, custom_operations)
                 await operation.execute_async(
                     grs=grs,
                     llm=self.llm,

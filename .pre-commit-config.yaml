@@ -26,14 +26,14 @@ repos:
   - repo: local
     hooks:
       - id: format
-        name: format
+        name: Format Code
         entry: make format
         language: system
         pass_filenames: false
         stages: [ pre-commit ]
 
       - id: test
-        name: test
+        name: Run Tests
         entry: make test
         language: system
         pass_filenames: false
