@@ -257,8 +257,10 @@ class AutoCoT:
                         "seed": iter_seed,
                     }
 
-                    local_semaphore = semaphore or asyncio.Semaphore(1)
-                    async with local_semaphore:
+                    if semaphore:
+                        async with semaphore:
+                            cot = await self.llm.generate_async(prompt, **gen_args)
+                    else:
                         cot = await self.llm.generate_async(prompt, **gen_args)
                     return idx, q, cot
                 except Exception as e:

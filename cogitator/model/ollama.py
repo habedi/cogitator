@@ -106,7 +106,7 @@ class OllamaLLM(BaseLLM):
                 opts["seed"] = int(opts["seed"])
             except (ValueError, TypeError):
                 logger.warning(
-                    f"Could not convert seed value {opts['seed']} to int. Setting seed to None."
+                    f"Could not convert seed value {opts['seed']} to int. Removing seed from options."
                 )
                 # Don't set seed to None, remove it if invalid
                 opts.pop("seed", None)
