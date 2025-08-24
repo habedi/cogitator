@@ -83,10 +83,6 @@ example-ollama: ## Run the examples using Ollama
 docs: ## Generate the project documentation
 	$(POETRY) run mkdocs build
 
-# All-in-one target
-.PHONY: all
-all: install typecheck build ## Install Python dependencies, run lint, typecheck, tests, and build the library
-
 .PHONY: setup-hooks
 setup-hooks: ## Install Git hooks (pre-commit and pre-push)
 	$(POETRY) run pre-commit install --hook-type pre-commit
