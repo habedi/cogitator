@@ -348,9 +348,23 @@ class OpenAILLM(BaseLLM):
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         stop: Optional[List[str]] = None,
+        use_cache: bool = False,
         **kwargs: Any,
     ) -> str:
         """Generates a single text completion using the configured OpenAI model."""
+        if use_cache:
+            cache_key = self._create_cache_key(
+                prompt=prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stop=stop,
+                **kwargs,
+            )
+            if cache_key in self._cache:
+                logger.debug(f"Cache hit for key: {cache_key}")
+                self._reset_token_counts()
+                return self._cache[cache_key]
+
         # _reset_token_counts is handled by _call_api
         call_kwargs = {
             "model": self.model,
@@ -369,9 +383,20 @@ class OpenAILLM(BaseLLM):
             # Reset counts if response is invalid, as _update might not have run correctly
             self._reset_token_counts()
             raise RuntimeError("OpenAI returned empty choices or content")
-        text = choices[0].message.content
+        text = choices[0].message.content.strip()
+        if use_cache:
+            cache_key = self._create_cache_key(
+                prompt=prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stop=stop,
+                **kwargs,
+            )
+            self._cache[cache_key] = text
+            logger.debug(f"Cached result for key: {cache_key}")
+
         # Note: _update_token_counts was already called in _call_api
-        return text.strip()
+        return text
 
     async def generate_async(
         self,

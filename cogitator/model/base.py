@@ -1,12 +1,13 @@
 """Defines the abstract base class for LLM providers."""
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
 import time
 from abc import ABC, abstractmethod
-from typing import Any, AsyncIterator, Iterator, Optional, Tuple, Type
+from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Type
 
 from pydantic import BaseModel, ValidationError
 
@@ -17,9 +18,10 @@ class BaseLLM(ABC):
     """Abstract base class defining the interface for LLM providers."""
 
     def __init__(self) -> None:
-        """Initializes token count storage."""
+        """Initializes token count storage and caching."""
         self._last_prompt_tokens: Optional[int] = None
         self._last_completion_tokens: Optional[int] = None
+        self._cache: Dict[str, Any] = {}
 
     def get_last_prompt_tokens(self) -> Optional[int]:
         """Returns the token count for the last prompt, if available."""
@@ -33,6 +35,26 @@ class BaseLLM(ABC):
         """Resets the stored token counts."""
         self._last_prompt_tokens = None
         self._last_completion_tokens = None
+
+    def _create_cache_key(self, prompt: str, **kwargs: Any) -> str:
+        """Creates a cache key from the prompt and critical generation parameters."""
+        # Filter out non-critical or mutable parameters
+        critical_params = {
+            "model",
+            "seed",
+            "stop",
+            "stop_sequences",
+            "temperature",
+            "top_p",
+            "max_tokens",
+        }
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k in critical_params}
+        # Sort for consistency
+        sorted_params = sorted(filtered_kwargs.items())
+
+        # Combine prompt and params into a single string
+        key_str = json.dumps({"prompt": prompt, "params": sorted_params})
+        return hashlib.sha256(key_str.encode("utf-8")).hexdigest()
 
     @abstractmethod
     def generate(self, prompt: str, **kwargs: Any) -> str:
@@ -51,7 +73,6 @@ class BaseLLM(ABC):
         """
         ...
 
-    @abstractmethod
     async def generate_async(self, prompt: str, **kwargs: Any) -> str:
         """Asynchronously generates a single text completion for the given prompt.
 
@@ -210,7 +231,12 @@ class BaseLLM(ABC):
         return text
 
     def generate_json(
-        self, prompt: str, response_model: Type[BaseModel], retries: int = 2, **kwargs: Any
+        self,
+        prompt: str,
+        response_model: Type[BaseModel],
+        retries: int = 2,
+        use_cache: bool = False,
+        **kwargs: Any,
     ) -> BaseModel:
         """Generates a response and parses it into a Pydantic model instance.
 
@@ -221,6 +247,7 @@ class BaseLLM(ABC):
             prompt: The input prompt, often instructing the LLM to respond in JSON.
             response_model: The Pydantic model class to validate the response against.
             retries: The number of times to retry on parsing/validation failure.
+            use_cache: If True, enables caching for the request.
             **kwargs: Additional provider-specific parameters for generation.
 
         Returns:
@@ -231,6 +258,17 @@ class BaseLLM(ABC):
             ValidationError: If the final response does not match the `response_model`.
             json.JSONDecodeError: If the final response is not valid JSON.
         """
+        if use_cache:
+            cache_key = self._create_cache_key(
+                prompt, response_model=response_model.model_json_schema(), **kwargs
+            )
+            if cache_key in self._cache:
+                logger.debug("Cache hit for key: %s", cache_key)
+                cached_data = self._cache[cache_key]
+                # Assuming token counts are not essential for cached responses
+                self._reset_token_counts()
+                return response_model.model_validate(cached_data)
+
         last_error = None
         temp = kwargs.pop("temperature", 0.1)
         json_kwargs = {**kwargs, "temperature": temp}
@@ -252,6 +290,13 @@ class BaseLLM(ABC):
                     block = self._extract_json_block(raw)
 
                 validated_model = response_model.model_validate_json(block.strip())
+                if use_cache:
+                    # Cache the successful result
+                    cache_key = self._create_cache_key(
+                        prompt, response_model=response_model.model_json_schema(), **kwargs
+                    )
+                    self._cache[cache_key] = validated_model.model_dump()
+                    logger.debug("Cached result for key: %s", cache_key)
                 # Token counts should have been set by _generate_json_internal
                 return validated_model
             except (json.JSONDecodeError, ValidationError) as ve:
