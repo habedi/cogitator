@@ -4,10 +4,10 @@ import asyncio
 import logging
 import math
 import random
-from typing import Any, AsyncIterator, Iterator, List, Optional
+from typing import Any, AsyncIterator, Iterator, List, Optional, Tuple, Union
 
 from ..model import BaseLLM
-from ..schemas import EvaluationResult, ThoughtExpansion
+from ..schemas import EvaluationResult, ThoughtExpansion, Trace
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +25,12 @@ class TreeOfThoughts:
         https://arxiv.org/abs/2305.10601
     """
 
+    _node_id_counter: int = 0
+
     class _Node:
         """Represents a node in the Tree of Thoughts search tree."""
 
-        __slots__ = ("children", "parent", "prior", "steps", "value_sum", "visits")
+        __slots__ = ("children", "id", "parent", "prior", "steps", "value_sum", "visits")
 
         def __init__(
             self,
@@ -43,6 +45,8 @@ class TreeOfThoughts:
                 parent: The parent node in the tree.
                 prior: The prior probability/score for this node (used in UCB calculation).
             """
+            self.id: int = TreeOfThoughts._node_id_counter
+            TreeOfThoughts._node_id_counter += 1
             self.steps = steps
             self.parent = parent
             self.children: List["TreeOfThoughts._Node"] = []
@@ -60,7 +64,10 @@ class TreeOfThoughts:
 
         def __repr__(self) -> str:
             """Returns a string representation of the node."""
-            return f"Node(steps={len(self.steps)}, val={self.value():.2f}, visits={self.visits})"
+            return (
+                f"Node(id={self.id}, steps={len(self.steps)}, "
+                f"val={self.value():.2f}, visits={self.visits})"
+            )
 
     def __init__(
         self,
@@ -116,7 +123,7 @@ class TreeOfThoughts:
         if self.seed is not None:
             random.seed(self.seed)
 
-    def _select(self, node: _Node) -> _Node:
+    def _select(self, node: _Node, trace: Optional[Trace] = None) -> _Node:
         """Selects a leaf node for expansion using the UCB1 algorithm.
 
         Traverses the tree from the given node, at each step choosing the child
@@ -124,16 +131,20 @@ class TreeOfThoughts:
 
         Args:
             node: The starting node (usually the root).
+            trace: Optional Trace object to record the selection path.
 
         Returns:
             The selected leaf node.
         """
+        path = [node.id]
         while not node.is_leaf():
             total_visits = sum(child.visits for child in node.children)
             if total_visits == 0:
                 # If no child has been visited, explore the first one first
                 # or handle this case based on desired exploration strategy
-                return node.children[0] if node.children else node
+                node = node.children[0] if node.children else node
+                path.append(node.id)
+                continue
 
             sqrt_total = math.sqrt(total_visits)
             ucb_scores = [
@@ -144,9 +155,22 @@ class TreeOfThoughts:
             # In case of ties, max() method's default behavior is used (typically returns the first max)
             best_idx = ucb_scores.index(max(ucb_scores))
             node = node.children[best_idx]
+            path.append(node.id)
+
+        if trace:
+            # Add a metadata entry to the trace indicating the selection event
+            # This is a conceptual example; trace structure may vary
+            trace.add_node(
+                node_id=f"select_{trace.root_node_id}_{len(trace.nodes)}",
+                parent_id=path[-2] if len(path) > 1 else trace.root_node_id,
+                content=f"Selected node {node.id} via path {path}",
+                metadata={"type": "selection", "path": path, "final_node_id": node.id},
+            )
         return node
 
-    def _expand(self, node: _Node, question: str, **kwargs: Any) -> None:
+    def _expand(
+        self, node: _Node, question: str, trace: Optional[Trace] = None, **kwargs: Any
+    ) -> None:
         """Expands a leaf node by generating child thoughts using the LLM.
 
         Uses `expand_prompt` to generate `num_branches` new thoughts based on
@@ -155,6 +179,7 @@ class TreeOfThoughts:
         Args:
             node: The leaf node to expand.
             question: The original question being solved.
+            trace: Optional Trace object to record new nodes.
             **kwargs: Additional arguments passed to the LLM `generate_json` call.
         """
         ctx = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(node.steps))
@@ -187,9 +212,21 @@ class TreeOfThoughts:
         for thought in thoughts[: self.num_branches]:
             child = TreeOfThoughts._Node([*node.steps, thought], parent=node, prior=prior)
             node.children.append(child)
+            if trace:
+                trace.add_node(
+                    node_id=child.id,
+                    parent_id=node.id,
+                    content=thought,
+                    metadata={"prior": prior, "type": "expansion"},
+                )
 
     async def _expand_async(
-        self, node: _Node, question: str, semaphore: Optional[asyncio.Semaphore], **kwargs: Any
+        self,
+        node: _Node,
+        question: str,
+        semaphore: Optional[asyncio.Semaphore],
+        trace: Optional[Trace] = None,
+        **kwargs: Any,
     ) -> None:
         """Asynchronously expands a leaf node.
 
@@ -199,6 +236,7 @@ class TreeOfThoughts:
             node: The leaf node to expand.
             question: The original question being solved.
             semaphore: Optional asyncio.Semaphore to limit concurrent LLM calls.
+            trace: Optional Trace object to record new nodes.
             **kwargs: Additional arguments passed to the async LLM `generate_json_async` call.
         """
         ctx = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(node.steps))
@@ -232,8 +270,17 @@ class TreeOfThoughts:
         for thought in thoughts[: self.num_branches]:
             child = TreeOfThoughts._Node([*node.steps, thought], parent=node, prior=prior)
             node.children.append(child)
+            if trace:
+                trace.add_node(
+                    node_id=child.id,
+                    parent_id=node.id,
+                    content=thought,
+                    metadata={"prior": prior, "type": "expansion"},
+                )
 
-    def _evaluate(self, node: _Node, question: str, **kwargs: Any) -> float:
+    def _evaluate(
+        self, node: _Node, question: str, trace: Optional[Trace] = None, **kwargs: Any
+    ) -> float:
         """Evaluates the reasoning path leading to a node using the LLM.
 
         Uses `eval_prompt` and expects a JSON response matching `EvaluationResult`.
@@ -242,6 +289,7 @@ class TreeOfThoughts:
         Args:
             node: The node whose path is to be evaluated.
             question: The original question.
+            trace: Optional Trace object to record the evaluation.
             **kwargs: Additional arguments passed to the LLM `generate_json` call.
 
         Returns:
@@ -249,6 +297,8 @@ class TreeOfThoughts:
         """
         steps_str = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(node.steps))
         prompt = self.eval_prompt.format(question=question, steps=steps_str)
+        score = 0.0
+        justification = "Evaluation failed"
         try:
             local_kwargs = kwargs.copy()
             eval_seed = local_kwargs.pop("seed", self.seed)
@@ -262,13 +312,30 @@ class TreeOfThoughts:
             )
             if isinstance(result, EvaluationResult):
                 raw = float(result.score)
-                return max(0.0, min(1.0, (raw - 1.0) / 9.0))
+                score = max(0.0, min(1.0, (raw - 1.0) / 9.0))
+                justification = result.justification
         except Exception as e:
             logger.error("Eval JSON failed: %s", e, exc_info=True)
-        return 0.0
+
+        if trace:
+            # Find the corresponding node in the trace and update it
+            for trace_node in trace.nodes:
+                if trace_node.node_id == node.id:
+                    trace_node.score = score
+                    if trace_node.metadata:
+                        trace_node.metadata["justification"] = justification
+                    else:
+                        trace_node.metadata = {"justification": justification}
+                    break
+        return score
 
     async def _evaluate_async(
-        self, node: _Node, question: str, semaphore: Optional[asyncio.Semaphore], **kwargs: Any
+        self,
+        node: _Node,
+        question: str,
+        semaphore: Optional[asyncio.Semaphore],
+        trace: Optional[Trace] = None,
+        **kwargs: Any,
     ) -> float:
         """Asynchronously evaluates the reasoning path leading to a node.
 
@@ -278,6 +345,7 @@ class TreeOfThoughts:
             node: The node whose path is to be evaluated.
             question: The original question.
             semaphore: Optional asyncio.Semaphore to limit concurrent LLM calls.
+            trace: Optional Trace object to record the evaluation.
             **kwargs: Additional arguments passed to the async LLM `generate_json_async` call.
 
         Returns:
@@ -285,6 +353,8 @@ class TreeOfThoughts:
         """
         steps_str = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(node.steps))
         prompt = self.eval_prompt.format(question=question, steps=steps_str)
+        score = 0.0
+        justification = "Evaluation failed"
         try:
             local_kwargs = kwargs.copy()
             eval_seed = local_kwargs.pop("seed", self.seed)
@@ -302,12 +372,23 @@ class TreeOfThoughts:
 
             if isinstance(result, EvaluationResult):
                 raw = float(result.score)
-                return max(0.0, min(1.0, (raw - 1.0) / 9.0))
+                score = max(0.0, min(1.0, (raw - 1.0) / 9.0))
+                justification = result.justification
         except Exception as e:
             logger.error("Async eval JSON failed: %s", e, exc_info=True)
-        return 0.0
 
-    def _backpropagate(self, node: _Node, value: float) -> None:
+        if trace:
+            for trace_node in trace.nodes:
+                if trace_node.node_id == node.id:
+                    trace_node.score = score
+                    if trace_node.metadata:
+                        trace_node.metadata["justification"] = justification
+                    else:
+                        trace_node.metadata = {"justification": justification}
+                    break
+        return score
+
+    def _backpropagate(self, node: _Node, value: float, trace: Optional[Trace] = None) -> None:
         """Backpropagates the evaluation score up the tree.
 
         Increments the visit count and adds the value to the value sum for the
@@ -316,14 +397,23 @@ class TreeOfThoughts:
         Args:
             node: The node from which to start backpropagation.
             value: The evaluation score to propagate.
+            trace: Optional Trace object to record the updates.
         """
         cur = node
         while cur is not None:
             cur.visits += 1
             cur.value_sum += value
+            if trace:
+                for trace_node in trace.nodes:
+                    if trace_node.node_id == cur.id:
+                        trace_node.visits = cur.visits
+                        trace_node.score = cur.value()  # Update with the new average value
+                        break
             cur = cur.parent
 
-    def run(self, question: str, **kwargs: Any) -> str:
+    def run(
+        self, question: str, with_trace: bool = False, **kwargs: Any
+    ) -> Union[str, Tuple[str, Trace]]:
         """Executes the Tree of Thoughts search process using MCTS-like steps.
 
         Performs `sims` simulations. Each simulation involves:
@@ -338,26 +428,38 @@ class TreeOfThoughts:
 
         Args:
             question: The question to solve.
+            with_trace: If True, returns a tuple of (answer, trace).
             **kwargs: Additional arguments passed to internal LLM calls.
 
         Returns:
-            The final answer string, or an error message on failure.
+            The final answer string, or a tuple (answer, trace) if with_trace is True.
         """
+        TreeOfThoughts._node_id_counter = 0
         root = TreeOfThoughts._Node(steps=[], parent=None, prior=1.0)
+        trace: Optional[Trace] = None
+        if with_trace:
+            trace = Trace(root_node_id=root.id)
+            trace.add_node(
+                node_id=root.id,
+                parent_id=None,
+                content="<root>",
+                score=root.value(),
+                visits=root.visits,
+            )
 
         for sim in range(self.sims):
             logger.debug("Simulation %d/%d", sim + 1, self.sims)
-            leaf = self._select(root)
+            leaf = self._select(root, trace=trace)
 
             to_eval = leaf
             if len(leaf.steps) < self.max_depth:
-                self._expand(leaf, question, **kwargs)
+                self._expand(leaf, question, trace=trace, **kwargs)
                 if leaf.children:
                     # Evaluate a randomly chosen new child node
                     to_eval = random.choice(leaf.children)
 
-            value = self._evaluate(to_eval, question, **kwargs)
-            self._backpropagate(to_eval, value)
+            value = self._evaluate(to_eval, question, trace=trace, **kwargs)
+            self._backpropagate(to_eval, value, trace=trace)
 
         if not root.children:
             logger.warning("No thoughts were generated; answering directly.")
@@ -374,19 +476,25 @@ class TreeOfThoughts:
             local_kwargs = kwargs.copy()
             final_seed = local_kwargs.pop("seed", self.seed)
             # Optional: Use a different seed for the final generation
-            return self.llm.generate(
+            answer = self.llm.generate(
                 final_prompt,
                 max_tokens=local_kwargs.pop("max_tokens", self.max_tokens),
                 seed=final_seed,
                 **local_kwargs,
             ).strip()
+            return (answer, trace) if with_trace and trace else answer
         except Exception as e:
             logger.error("Final answer generation failed: %s", e, exc_info=True)
-            return "Error generating final answer."
+            err_msg = "Error generating final answer."
+            return (err_msg, trace) if with_trace and trace else err_msg
 
     async def run_async(
-        self, question: str, semaphore: Optional[asyncio.Semaphore] = None, **kwargs: Any
-    ) -> str:
+        self,
+        question: str,
+        semaphore: Optional[asyncio.Semaphore] = None,
+        with_trace: bool = False,
+        **kwargs: Any,
+    ) -> Union[str, Tuple[str, Trace]]:
         """Asynchronously executes the Tree of Thoughts search process using MCTS-like steps.
 
         Similar to `run`, but performs expansion and evaluation steps concurrently
@@ -395,26 +503,38 @@ class TreeOfThoughts:
         Args:
             question: The question to solve.
             semaphore: Optional asyncio.Semaphore to limit concurrent LLM calls.
+            with_trace: If True, returns a tuple of (answer, trace).
             **kwargs: Additional arguments passed to internal async LLM calls.
 
         Returns:
-            The final answer string, or an error message on failure.
+            The final answer string, or a tuple (answer, trace) if with_trace is True.
         """
+        TreeOfThoughts._node_id_counter = 0
         root = TreeOfThoughts._Node(steps=[], parent=None, prior=1.0)
+        trace: Optional[Trace] = None
+        if with_trace:
+            trace = Trace(root_node_id=root.id)
+            trace.add_node(
+                node_id=root.id,
+                parent_id=None,
+                content="<root>",
+                score=root.value(),
+                visits=root.visits,
+            )
 
         for sim in range(self.sims):
             logger.debug("Async Simulation %d/%d", sim + 1, self.sims)
-            leaf = self._select(root)
+            leaf = self._select(root, trace=trace)
 
             to_eval = leaf
             if len(leaf.steps) < self.max_depth:
-                await self._expand_async(leaf, question, semaphore, **kwargs)
+                await self._expand_async(leaf, question, semaphore, trace=trace, **kwargs)
                 if leaf.children:
                     # Evaluate a randomly chosen new child node
                     to_eval = random.choice(leaf.children)
 
-            value = await self._evaluate_async(to_eval, question, semaphore, **kwargs)
-            self._backpropagate(to_eval, value)
+            value = await self._evaluate_async(to_eval, question, semaphore, trace=trace, **kwargs)
+            self._backpropagate(to_eval, value, trace=trace)
 
         if not root.children:
             logger.warning("No thoughts were generated async; answering directly.")
@@ -438,12 +558,15 @@ class TreeOfThoughts:
             }
             if semaphore:
                 async with semaphore:
-                    return (await self.llm.generate_async(final_prompt, **gen_args)).strip()
+                    answer = (await self.llm.generate_async(final_prompt, **gen_args)).strip()
             else:
-                return (await self.llm.generate_async(final_prompt, **gen_args)).strip()
+                answer = (await self.llm.generate_async(final_prompt, **gen_args)).strip()
+
+            return (answer, trace) if with_trace and trace else answer
         except Exception as e:
             logger.error("Final async answer generation failed: %s", e, exc_info=True)
-            return "Error generating final async answer."
+            err_msg = "Error generating final async answer."
+            return (err_msg, trace) if with_trace and trace else err_msg
 
     # Consider adding stream methods if applicable, though ToT structure makes streaming complex.
     def run_stream(self, prompt: str) -> Iterator[str]:
