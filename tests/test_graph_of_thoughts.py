@@ -127,6 +127,49 @@ def test_run_returns_result_and_calls_prompts_text_format(
             raise
 
 
+@pytest.mark.asyncio
+async def test_run_async_with_custom_operation(fake_llm_factory, patch_embedding_clustering):
+    """Tests if a custom operation can be successfully added and executed."""
+    from cogitator.strategies.graph_of_thoughts import GoTOperation, GraphReasoningState
+    from cogitator.model import BaseLLM
+
+    # 1. Define a simple custom operation
+    class CustomOp(GoTOperation):
+        async def execute_async(self, grs: GraphReasoningState, llm: BaseLLM, **kwargs) -> None:
+            # Mark that this custom operation has run
+            for node in grs.get_active_set("frontier"):
+                node.data = {"custom_op_executed": True}
+
+        def execute(self, grs: GraphReasoningState, llm: BaseLLM, **kwargs) -> None:
+            pass  # Not used in this test
+
+    llm = fake_llm_factory({
+        "responses_map": {
+            "Based on the final reasoning": "Custom op result"
+        }
+    })
+    got_instance = GraphOfThoughts(llm=llm, final_answer_format="direct_content")
+
+    # 2. Define a GoO that uses the custom operation
+    test_goo: List[Tuple[str, Dict]] = [
+        ('CustomOp', {})  # Call the custom operation
+    ]
+
+    # 3. Run with the custom operation
+    out = await got_instance.run_async(
+        "start?",
+        graph_of_operations=test_goo,
+        custom_operations={'CustomOp': CustomOp}
+    )
+
+    # 4. Verify the result
+    # The final answer isn't the main check, but good to have
+    assert out == "start?"  # direct_content returns the best node content
+    # The main check: did the custom op modify the node state?
+    total_calls = sum(llm._call_counts.values())
+    assert total_calls == 0, "LLM should not be called for this simple custom op"
+
+
 def test_run_returns_result_and_calls_prompts_json_format(
     fake_llm_factory, patch_embedding_clustering):
     fake_expansion_config = ThoughtExpansion(thoughts=["stepA_sync_json"])

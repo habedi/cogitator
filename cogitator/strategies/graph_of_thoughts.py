@@ -5,13 +5,13 @@ import json
 import logging
 import re
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 
 from ..embedding import BaseEmbedder, SentenceTransformerEmbedder
 from ..model import BaseLLM
-from ..schemas import EvaluationResult, ExtractedAnswer, ThoughtExpansion
+from ..schemas import EvaluationResult, ExtractedAnswer, ThoughtExpansion, Trace
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +45,12 @@ class GoTNode:
     _id_counter = 0
 
     def __init__(
-            self,
-            steps: List[str],
-            embedder: Optional[BaseEmbedder] = None,
-            parents: Optional[List["GoTNode"]] = None,
-            data: Optional[Any] = None,
-            text_content: Optional[str] = None,  # Store the core text content separately if needed
+        self,
+        steps: List[str],
+        embedder: Optional[BaseEmbedder] = None,
+        parents: Optional[List["GoTNode"]] = None,
+        data: Optional[Any] = None,
+        text_content: Optional[str] = None,  # Store the core text content separately if needed
     ) -> None:
         """Initializes a GoT node.
 
@@ -164,12 +164,12 @@ class GoTOperation(ABC):
 
     @abstractmethod
     def execute(
-            self,
-            grs: GraphReasoningState,
-            llm: BaseLLM,
-            prompts: Dict[str, str],
-            embedder: Optional[BaseEmbedder] = None,
-            **global_kwargs: Any,
+        self,
+        grs: GraphReasoningState,
+        llm: BaseLLM,
+        prompts: Dict[str, str],
+        embedder: Optional[BaseEmbedder] = None,
+        **global_kwargs: Any,
     ) -> None:
         """Executes the operation, modifying the GraphReasoningState.
 
@@ -185,13 +185,14 @@ class GoTOperation(ABC):
     # Optional: async version
     @abstractmethod
     async def execute_async(
-            self,
-            grs: GraphReasoningState,
-            llm: BaseLLM,
-            prompts: Dict[str, str],
-            embedder: Optional[BaseEmbedder] = None,
-            semaphore: Optional[asyncio.Semaphore] = None,
-            **global_kwargs,
+        self,
+        grs: GraphReasoningState,
+        llm: BaseLLM,
+        prompts: Dict[str, str],
+        embedder: Optional[BaseEmbedder] = None,
+        semaphore: Optional[asyncio.Semaphore] = None,
+        trace: Optional[Trace] = None,
+        **global_kwargs,
     ) -> None:
         """Asynchronously executes the operation."""
         pass
@@ -203,7 +204,9 @@ class GoTOperation(ABC):
 class GenerateOp(GoTOperation):
     """Generates new thoughts based on parent nodes."""
 
-    async def execute_async(self, grs, llm, prompts, embedder, semaphore, **global_kwargs) -> None:
+    async def execute_async(
+        self, grs, llm, prompts, embedder, semaphore, trace=None, **global_kwargs
+    ) -> None:
         """Generates new thoughts asynchronously."""
         k = self.params.get("k", 1)
         target_set = self.params.get("target_set", "frontier")
@@ -275,6 +278,13 @@ class GenerateOp(GoTOperation):
                     grs.add_node(
                         new_node
                     )  # Add immediately to allow potential merging later if needed
+                    if trace:
+                        trace.add_node(
+                            node_id=new_node.id,
+                            parent_id=parent_node.id,
+                            content=new_node.text_content or "",
+                            metadata={"op": "Generate", "prompt_key": prompt_key},
+                        )
                     node_results.append(new_node)
                 return node_results
             except Exception as e:
@@ -302,7 +312,9 @@ class GenerateOp(GoTOperation):
 class AggregateOp(GoTOperation):
     """Aggregates multiple thoughts into new ones."""
 
-    async def execute_async(self, grs, llm, prompts, embedder, semaphore, **global_kwargs) -> None:
+    async def execute_async(
+        self, grs, llm, prompts, embedder, semaphore, trace=None, **global_kwargs
+    ) -> None:
         """Aggregates thoughts asynchronously."""
         k = self.params.get("k", 1)
         target_sets = self.params.get(
@@ -368,6 +380,19 @@ class AggregateOp(GoTOperation):
                     embedder=embedder,
                 )
                 grs.add_node(new_node)
+                if trace:
+                    trace.add_node(
+                        node_id=new_node.id,
+                        # This part is tricky as there are multiple parents.
+                        # We can list them in metadata.
+                        parent_id=parent_refs[0].id if parent_refs else None,
+                        content=new_node.text_content or "",
+                        metadata={
+                            "op": "Aggregate",
+                            "prompt_key": prompt_key,
+                            "parent_ids": [p.id for p in parent_refs],
+                        },
+                    )
                 newly_aggregated_nodes.append(new_node)
 
         except Exception as e:
@@ -390,7 +415,9 @@ class AggregateOp(GoTOperation):
 class ScoreOp(GoTOperation):
     """Scores thoughts using the LLM."""
 
-    async def execute_async(self, grs, llm, prompts, embedder, semaphore, **global_kwargs) -> None:
+    async def execute_async(
+        self, grs, llm, prompts, embedder, semaphore, trace=None, **global_kwargs
+    ) -> None:
         """Scores nodes asynchronously."""
         target_set = self.params.get(
             "target_set", "generated"
@@ -451,11 +478,13 @@ class ScoreOp(GoTOperation):
 class KeepBestOp(GoTOperation):
     """Selects the top N nodes based on score."""
 
-    async def execute_async(self, grs, llm, prompts, embedder, semaphore, **global_kwargs) -> None:
+    async def execute_async(
+        self, grs, llm, prompts, embedder, semaphore, trace=None, **global_kwargs
+    ) -> None:
         """Selects best nodes (synchronous logic sufficient)."""
-        self.execute(grs, llm, prompts, embedder, **global_kwargs)
+        self.execute(grs, llm, prompts, embedder, trace=trace, **global_kwargs)
 
-    def execute(self, grs, llm, prompts, embedder, **global_kwargs) -> None:
+    def execute(self, grs, llm, prompts, embedder, trace=None, **global_kwargs) -> None:
         """Selects best nodes."""
         n_best = self.params.get("N", 1)
         target_set = self.params.get("target_set", "scored")  # Operate on previously scored nodes
@@ -464,6 +493,16 @@ class KeepBestOp(GoTOperation):
         nodes_to_consider = grs.get_active_set(target_set)
         nodes_to_consider.sort(key=lambda n: n.score, reverse=True)
         best_nodes = nodes_to_consider[:n_best]
+
+        if trace:
+            for node in best_nodes:
+                trace.add_node(
+                    node_id=f"keep_{node.id}",
+                    parent_id=node.id,
+                    content=f"Kept node {node.id} with score {node.score:.2f}",
+                    score=node.score,
+                    metadata={"op": "KeepBest", "N": n_best, "target_set": target_set},
+                )
 
         grs.set_active_set(output_set, best_nodes)
         logger.info(f"KeepBestOp selected top {len(best_nodes)} nodes into set '{output_set}'.")
@@ -484,13 +523,13 @@ class GraphOfThoughts:
     """
 
     def __init__(
-            self,
-            llm: BaseLLM,
-            embedder: Optional[BaseEmbedder] = None,
-            final_answer_format: Literal["text", "json", "direct_content"] = "text",
-            prompts: Optional[Dict[str, str]] = None,
-            max_tokens: Optional[int] = None,
-            seed: Optional[int] = None,
+        self,
+        llm: BaseLLM,
+        embedder: Optional[BaseEmbedder] = None,
+        final_answer_format: Literal["text", "json", "direct_content"] = "text",
+        prompts: Optional[Dict[str, str]] = None,
+        max_tokens: Optional[int] = None,
+        seed: Optional[int] = None,
     ) -> None:
         """Initializes the GraphOfThoughts strategy handler.
 
@@ -539,7 +578,7 @@ class GraphOfThoughts:
         }
 
     def _find_similar_node(
-            self, new_node: GoTNode, nodes_to_check: List[GoTNode], threshold: float
+        self, new_node: GoTNode, nodes_to_check: List[GoTNode], threshold: float
     ) -> Optional[GoTNode]:
         """Finds an existing node similar to `new_node` based on embedding similarity.
 
@@ -595,8 +634,17 @@ class GraphOfThoughts:
                 return other
         return None
 
-    def _create_operation(self, op_name: str, params: Dict) -> GoTOperation:
+    def _create_operation(
+        self,
+        op_name: str,
+        params: Dict,
+        custom_operations: Optional[Dict[str, "GoTOperation"]] = None,
+    ) -> GoTOperation:
         """Factory method to create operation instances."""
+        if custom_operations and op_name in custom_operations:
+            op_class = custom_operations[op_name]
+            return op_class(**params)
+
         if op_name == "Generate":
             return GenerateOp(**params)
         elif op_name == "Aggregate":
@@ -612,12 +660,14 @@ class GraphOfThoughts:
             raise ValueError(f"Unknown GoT operation: {op_name}")
 
     async def run_async(
-            self,
-            question: str,
-            graph_of_operations: List[Tuple[str, Dict]],
-            semaphore: Optional[asyncio.Semaphore] = None,
-            **kwargs: Any,
-    ) -> str:
+        self,
+        question: str,
+        graph_of_operations: List[Tuple[str, Dict]],
+        custom_operations: Optional[Dict[str, "GoTOperation"]] = None,
+        semaphore: Optional[asyncio.Semaphore] = None,
+        with_trace: bool = False,
+        **kwargs: Any,
+    ) -> Union[str, Tuple[str, Trace]]:
         """Asynchronously executes the Graph of Thoughts reasoning process based on a GoO.
 
         Args:
@@ -628,16 +678,23 @@ class GraphOfThoughts:
                                            ('KeepBest', {'N': 3, 'target_set': 'thoughts1', 'output_set': 'frontier'}),
                                            ('Aggregate', {'target_sets': ['frontier'], 'k': 1, 'output_set': 'aggregated'}),
                                            ...]
+            custom_operations: An optional dictionary mapping names to custom GoTOperation classes.
             semaphore: Optional asyncio.Semaphore to limit concurrent LLM calls.
+            with_trace: If True, returns a tuple of (answer, trace).
             **kwargs: Additional arguments passed to internal LLM calls (e.g., seed, max_tokens).
 
         Returns:
-            The final answer string generated by the LLM based on the best reasoning path found.
-            Returns an error message if no paths are generated or the final generation fails.
+            The final answer string, or a tuple (answer, trace) if with_trace is True.
         """
         GoTNode._id_counter = 0
         root = GoTNode([question], embedder=None, text_content=question)  # Embed root optionally
         grs = GraphReasoningState(root)
+        trace: Optional[Trace] = None
+        if with_trace:
+            trace = Trace(root_node_id=root.id)
+            trace.add_node(
+                node_id=root.id, parent_id=None, content=root.text_content or "", score=root.score
+            )
 
         global_llm_params = {
             "seed": kwargs.pop("seed", self.seed),
@@ -650,18 +707,20 @@ class GraphOfThoughts:
         for op_name, op_params in graph_of_operations:
             logger.info(f"Executing GoO Step: {op_name} with params {op_params}")
             try:
-                operation = self._create_operation(op_name, op_params)
+                operation = self._create_operation(op_name, op_params, custom_operations)
                 await operation.execute_async(
                     grs=grs,
                     llm=self.llm,
                     prompts=self.prompts,
                     embedder=self.embedder,
                     semaphore=semaphore,
+                    trace=trace,
                     **global_llm_params,
                 )
             except Exception as e:
                 logger.error(f"Error executing operation {op_name}: {e}", exc_info=True)
-                return f"Error during operation {op_name}"
+                err_msg = f"Error during operation {op_name}"
+                return (err_msg, trace) if with_trace and trace else err_msg
 
             # Optional: Add logging for GRS state after each step
             # logger.debug(f"GRS after {op_name}: {grs.active_sets}")
@@ -678,7 +737,8 @@ class GraphOfThoughts:
 
         if not final_candidates:
             logger.error("No candidate nodes found at the end of GoT run (async).")
-            return "Error: No reasoning paths generated."
+            err_msg = "Error: No reasoning paths generated."
+            return (err_msg, trace) if with_trace and trace else err_msg
 
         # Select best node based on score (or other criteria if defined)
         best_node = max(final_candidates, key=lambda n: n.score)
@@ -694,14 +754,15 @@ class GraphOfThoughts:
             local_kwargs_final = global_llm_params.copy()
             final_seed = local_kwargs_final.pop("seed", self.seed)
             final_max_tokens = local_kwargs_final.pop("max_tokens", self.max_tokens)
+            answer = ""
 
             if self.final_answer_format == "direct_content":
-                return best_node.text_content or "Error: Best node had no content."
+                answer = best_node.text_content or "Error: Best node had no content."
 
-            if self.final_answer_format == "json":
+            elif self.final_answer_format == "json":
                 json_req = (
-                        final_prompt
-                        + '\n\nReturn exactly one JSON object with a single key "final_answer" whose value is the answer string.\n\nJSON Answer:'
+                    final_prompt
+                    + '\n\nReturn exactly one JSON object with a single key "final_answer" whose value is the answer string.\n\nJSON Answer:'
                 )
                 gen_args = {
                     "response_model": ExtractedAnswer,
@@ -716,12 +777,12 @@ class GraphOfThoughts:
                     parsed = await self.llm.generate_json_async(json_req, **gen_args)
                 final_answer_value = parsed.final_answer
                 if isinstance(final_answer_value, str):
-                    return final_answer_value.strip()
+                    answer = final_answer_value.strip()
                 elif final_answer_value is not None:
-                    return str(final_answer_value)
+                    answer = str(final_answer_value)
                 else:
                     logger.warning("GoT final async JSON extraction returned None.")
-                    return ""
+                    answer = ""
             else:
                 gen_args = {
                     "max_tokens": final_max_tokens,
@@ -730,12 +791,15 @@ class GraphOfThoughts:
                 }
                 if semaphore:
                     async with semaphore:
-                        return (await self.llm.generate_async(final_prompt, **gen_args)).strip()
+                        answer = (await self.llm.generate_async(final_prompt, **gen_args)).strip()
                 else:
-                    return (await self.llm.generate_async(final_prompt, **gen_args)).strip()
+                    answer = (await self.llm.generate_async(final_prompt, **gen_args)).strip()
+
+            return (answer, trace) if with_trace and trace else answer
         except Exception as e:
             logger.error("Final async answer generation failed: %s", e, exc_info=True)
-            return "Error generating final async answer."
+            err_msg = "Error generating final async answer."
+            return (err_msg, trace) if with_trace and trace else err_msg
 
     def run(self, question: str, graph_of_operations: List[Tuple[str, Dict]], **kwargs: Any) -> str:
         """Synchronous execution is not supported for GraphOfThoughts."""

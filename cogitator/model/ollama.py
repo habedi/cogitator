@@ -106,7 +106,7 @@ class OllamaLLM(BaseLLM):
                 opts["seed"] = int(opts["seed"])
             except (ValueError, TypeError):
                 logger.warning(
-                    f"Could not convert seed value {opts['seed']} to int. Setting seed to None."
+                    f"Could not convert seed value {opts['seed']} to int. Removing seed from options."
                 )
                 # Don't set seed to None, remove it if invalid
                 opts.pop("seed", None)
@@ -136,11 +136,12 @@ class OllamaLLM(BaseLLM):
             f"Estimated token usage via approx_token_length: P={self._last_prompt_tokens}, C={self._last_completion_tokens}"
         )
 
-    def generate(self, prompt: str, **kwargs: Any) -> str:
+    def generate(self, prompt: str, use_cache: bool = False, **kwargs: Any) -> str:
         """Generates a single text completion using the configured Ollama model.
 
         Args:
             prompt: The input text prompt.
+            use_cache: If True, enables caching for the request.
             **kwargs: Additional Ollama options (overrides defaults like temperature,
                 max_tokens, seed, stop).
 
@@ -150,6 +151,13 @@ class OllamaLLM(BaseLLM):
         Raises:
             RuntimeError: If the Ollama API call fails.
         """
+        if use_cache:
+            cache_key = self._create_cache_key(prompt=prompt, **kwargs)
+            if cache_key in self._cache:
+                logger.debug(f"Cache hit for key: {cache_key}")
+                self._reset_token_counts()
+                return self._cache[cache_key]
+
         self._reset_token_counts()
         opts = self._prepare_options(**kwargs)
         try:
@@ -158,6 +166,10 @@ class OllamaLLM(BaseLLM):
             )
             content = self._strip_content(resp)
             self._update_token_counts(prompt, resp, content)  # Update counts
+            if use_cache:
+                cache_key = self._create_cache_key(prompt=prompt, **kwargs)
+                self._cache[cache_key] = content
+                logger.debug(f"Cached result for key: {cache_key}")
             return content
         except Exception as e:
             self._reset_token_counts()  # Reset on error

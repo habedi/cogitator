@@ -6,8 +6,8 @@ embedding models, clustering algorithms, and data validation schemas.
 It aims to make it easier to try and integrate CoT methods into AI applications.
 """
 
-from importlib.metadata import version, PackageNotFoundError
 import logging
+from importlib.metadata import PackageNotFoundError, version
 
 from .clustering import BaseClusterer, KMeansClusterer
 from .embedding import BaseEmbedder, SentenceTransformerEmbedder

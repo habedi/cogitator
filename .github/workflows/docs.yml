@@ -2,6 +2,11 @@ name: Build and Deploy Docs
 
 on:
   workflow_dispatch:
+  push:
+      branches:
+        - main
+      tags:
+        - "v*"
 
 permissions:
   contents: read
@@ -14,7 +19,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  deploy-docs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

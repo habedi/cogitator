@@ -185,3 +185,86 @@ def test_ollama_prepare_options(mock_ollama_clients):
 
     opts_defaults = llm._prepare_options()
     assert opts_defaults == {"temperature": 0.5, "num_predict": 100, "seed": 1, "stop": ["\n"]}
+
+
+def test_openai_caching_disabled_by_default(mock_openai_clients):
+    mock_sync, _ = mock_openai_clients
+    llm = OpenAILLM(api_key="dummy")
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock(message=MagicMock(content="response 1"))]
+    mock_sync.chat.completions.create.return_value = mock_response
+
+    llm.generate("prompt 1")
+    llm.generate("prompt 1")
+
+    assert mock_sync.chat.completions.create.call_count == 2
+
+
+def test_openai_caching_enabled(mock_openai_clients):
+    mock_sync, _ = mock_openai_clients
+    llm = OpenAILLM(api_key="dummy")
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock(message=MagicMock(content="response 1"))]
+    mock_sync.chat.completions.create.return_value = mock_response
+
+    # First call, should call the API
+    res1 = llm.generate("prompt 1", use_cache=True)
+    assert res1 == "response 1"
+    assert mock_sync.chat.completions.create.call_count == 1
+
+    # Second call, should hit the cache
+    res2 = llm.generate("prompt 1", use_cache=True)
+    assert res2 == "response 1"
+    assert mock_sync.chat.completions.create.call_count == 1
+
+
+def test_ollama_caching_enabled(mock_ollama_clients):
+    mock_sync, _ = mock_ollama_clients
+    llm = OllamaLLM(model="dummy")
+    mock_sync.chat.return_value = {"message": {"content": "ollama response"}}
+
+    # First call
+    res1 = llm.generate("prompt 1", use_cache=True)
+    assert res1 == "ollama response"
+    assert mock_sync.chat.call_count == 1
+
+    # Second call
+    res2 = llm.generate("prompt 1", use_cache=True)
+    assert res2 == "ollama response"
+    assert mock_sync.chat.call_count == 1
+
+
+def test_json_caching(mock_openai_clients):
+    mock_sync, _ = mock_openai_clients
+    llm = OpenAILLM(api_key="dummy", model="gpt-4o")
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock(message=MagicMock(content='{"answer": "json response"}'))]
+    mock_sync.chat.completions.create.return_value = mock_response
+
+    # First call
+    res1 = llm.generate_json("json prompt", SimpleSchema, use_cache=True)
+    assert isinstance(res1, SimpleSchema)
+    assert res1.answer == "json response"
+    assert mock_sync.chat.completions.create.call_count == 1
+
+    # Second call
+    res2 = llm.generate_json("json prompt", SimpleSchema, use_cache=True)
+    assert isinstance(res2, SimpleSchema)
+    assert res2.answer == "json response"
+    assert mock_sync.chat.completions.create.call_count == 1
+
+
+def test_cache_key_differentiation(mock_openai_clients):
+    mock_sync, _ = mock_openai_clients
+    llm = OpenAILLM(api_key="dummy")
+    mock_sync.chat.completions.create.side_effect = [
+        MagicMock(choices=[MagicMock(message=MagicMock(content="response 1"))]),
+        MagicMock(choices=[MagicMock(message=MagicMock(content="response 2"))]),
+    ]
+
+    res1 = llm.generate("prompt", use_cache=True, temperature=0.5)
+    res2 = llm.generate("prompt", use_cache=True, temperature=0.8)
+
+    assert res1 == "response 1"
+    assert res2 == "response 2"
+    assert mock_sync.chat.completions.create.call_count == 2
