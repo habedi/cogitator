@@ -22,33 +22,37 @@ class OpenAILLM(BaseLLM):
     Handles interactions with models like GPT-4, GPT-4o, etc., supporting
     standard generation, streaming, JSON mode, and structured outputs where available.
     Includes retry logic for common API errors.
+
+    Model capability detection can be configured via constructor parameters or
+    will be auto-detected based on known model prefixes.
     """
 
-    _STRUCTURED_OUTPUT_SUPPORTING_MODELS = {
+    # Known model prefixes for capability auto-detection (used as fallback)
+    _KNOWN_STRUCTURED_OUTPUT_PREFIXES = (
         "gpt-4o",
-        "gpt-4o-mini",
-        "gpt-4o-2024-08-06",
-        "gpt-4o-mini-2024-07-18",
-    }
+        "gpt-4.1",
+        "gpt-5",
+        "gpt-5-mini",
+    )
 
-    _JSON_MODE_SUPPORTING_MODELS = {
+    _KNOWN_JSON_MODE_PREFIXES = (
         "gpt-4",
-        "gpt-4-turbo",
-        "gpt-4-turbo-preview",
         "gpt-3.5-turbo-1106",
         "gpt-3.5-turbo-0125",
-    } | _STRUCTURED_OUTPUT_SUPPORTING_MODELS
+    )
 
     def __init__(
         self,
         api_key: str,
-        model: str = "gpt-4o-mini",  # Changed default
+        model: str = "gpt-4o-mini",
         temperature: float = 0.7,
         max_tokens: int = 512,
         stop: Optional[List[str]] = None,
         seed: Optional[int] = 33,
         retry_attempts: int = 3,
         retry_backoff: float = 1.0,
+        supports_structured_output: Optional[bool] = None,
+        supports_json_mode: Optional[bool] = None,
     ) -> None:
         """Initializes the OpenAILLM provider.
 
@@ -61,6 +65,12 @@ class OpenAILLM(BaseLLM):
             seed: The random seed for reproducibility (if supported by the model).
             retry_attempts: Number of retries upon API call failure.
             retry_backoff: Initial backoff factor for retries (exponential).
+            supports_structured_output: Override for structured output capability.
+                If None, auto-detects based on known model prefixes.
+                Set True to force to enable, False to force to disable.
+            supports_json_mode: Override for JSON mode capability.
+                If None, auto-detects based on known model prefixes.
+                Set True to force enable, False to force disable.
         """
         super().__init__()  # Call BaseLLM init
         self.client = SyncOpenAI(api_key=api_key)
@@ -72,13 +82,32 @@ class OpenAILLM(BaseLLM):
         self.seed = seed
         self.retry_attempts = retry_attempts
         self.retry_backoff = retry_backoff
+
+        # Configure model capabilities (auto-detect or use explicit overrides)
+        if supports_structured_output is not None:
+            self._supports_structured_output = supports_structured_output
+        else:
+            self._supports_structured_output = any(
+                model.startswith(prefix) for prefix in self._KNOWN_STRUCTURED_OUTPUT_PREFIXES
+            )
+
+        if supports_json_mode is not None:
+            self._supports_json_mode = supports_json_mode
+        else:
+            # JSON mode is supported by structured output models + known JSON mode models
+            self._supports_json_mode = self._supports_structured_output or any(
+                model.startswith(prefix) for prefix in self._KNOWN_JSON_MODE_PREFIXES
+            )
+
         # Load tiktoken encoding
         try:
             self.encoding = tiktoken.encoding_for_model(self.model)
         except KeyError:
             logger.warning(f"No tiktoken encoding found for model {self.model}. Using cl100k_base.")
             self.encoding = tiktoken.get_encoding("cl100k_base")
-        logger.info(f"Initialized OpenAILLM with model: {self.model}")
+        logger.info(
+            f"Initialized OpenAILLM with model: {self.model} (structured_output={self._supports_structured_output}, json_mode={self._supports_json_mode})"
+        )
 
     def _update_token_counts(
         self, prompt: str, response: Any, completion_text: Optional[str]
@@ -142,12 +171,9 @@ class OpenAILLM(BaseLLM):
         params = kwargs.copy()
         mode_used: Optional[str] = None
 
-        supports_structured = any(
-            self.model.startswith(known) for known in self._STRUCTURED_OUTPUT_SUPPORTING_MODELS
-        )
-        supports_json_object = any(
-            self.model.startswith(known) for known in self._JSON_MODE_SUPPORTING_MODELS
-        )
+        # Use instance-level capability flags
+        supports_structured = self._supports_structured_output
+        supports_json_object = self._supports_json_mode
 
         if is_json_mode:
             if response_schema:

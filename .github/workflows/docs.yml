@@ -3,20 +3,17 @@ name: Build and Deploy Docs
 on:
   workflow_dispatch:
   push:
-      branches:
-        - main
-      tags:
-        - "v*"
+    tags:
+      - "v*"
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 permissions:
   contents: read
   pages: write
   id-token: write
-
-# Only allow one deployment at a time running
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
 
 jobs:
   deploy-docs:
@@ -31,7 +28,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.10'
 
       - name: Install Poetry
         uses: snok/install-poetry@v1
@@ -39,7 +36,7 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
-      - name: Load cached venv
+      - name: Load Cached Venv
         id: cached-poetry-dependencies
         uses: actions/cache@v4
         with:

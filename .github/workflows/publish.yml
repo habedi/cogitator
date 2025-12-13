@@ -3,10 +3,12 @@ name: Publish to PyPI
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
+
+concurrency:
+  group: "publish"
+  cancel-in-progress: true
 
 permissions:
   contents: read

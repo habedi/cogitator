@@ -11,7 +11,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 from .clustering import BaseClusterer, KMeansClusterer
 from .embedding import BaseEmbedder, SentenceTransformerEmbedder
-from .model import BaseLLM, OllamaLLM, OpenAILLM
+from .model import BaseLLM, OllamaLLM, OpenAILLM, OpenRouterLLM
 from .schemas import (
     EvaluationResult,
     ExtractedAnswer,
@@ -53,6 +53,7 @@ __all__ = [
     "LeastToMost",
     "OllamaLLM",
     "OpenAILLM",
+    "OpenRouterLLM",
     "SelfConsistency",
     "SentenceTransformerEmbedder",
     "ThoughtExpansion",

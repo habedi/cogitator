@@ -82,7 +82,7 @@ class CDWCoT:
 
     def _is_valid_distribution(self, p: np.ndarray) -> bool:
         """Checks if a NumPy array represents a valid probability distribution."""
-        return bool(p.size) and np.all(p >= 0) and np.isclose(p.sum(), 1.0)
+        return bool(p.size and np.all(p >= 0) and np.isclose(p.sum(), 1.0))
 
     def _select_pool_indices(self, questions: List[str]) -> List[Tuple[int, str]]:
         """Selects candidate questions for the prompt pool based on clustering.
@@ -312,7 +312,6 @@ class CDWCoT:
         failed_indices: List[int] = []
         for i, res in enumerate(results):
             original_index = pool_candidates[i][0]
-            pool_candidates[i][1]
             if isinstance(res, Exception):
                 logger.error(f"Async generation task failed for index {original_index}: {res}")
                 failed_indices.append(original_index)

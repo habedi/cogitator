@@ -13,7 +13,7 @@ applications.
 ### Features
 
 * Provides unified sync/async API for CoT strategies
-* Supports using OpenAI and Ollama as LLM providers
+* Supports using OpenAI, Ollama, and OpenRouter as LLM providers
 * Supports structured model output with Pydantic validation
 * Includes a customizable benchmarking framework (see [benches](https://github.com/habedi/cogitator/blob/main/benches))
 * Includes implementations of popular CoT strategies and frameworks like

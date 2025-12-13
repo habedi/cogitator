@@ -1,0 +1,3 @@
+# OpenRouterLLM
+
+::: cogitator.model.openrouter

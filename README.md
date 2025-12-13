@@ -12,7 +12,7 @@
 [![Python Version](https://img.shields.io/badge/python-%3E=3.10-3776ab?style=flat&labelColor=333333&logo=python&logoColor=white)](https://github.com/habedi/cogitator)
 [![PyPI Version](https://img.shields.io/pypi/v/cogitator.svg?style=flat&label=pypi&labelColor=333333&logo=pypi&logoColor=white&color=3775a9)](https://pypi.org/project/cogitator)
 <br>
-[![Docs](https://img.shields.io/badge/docs-latest-8ca0d7?style=flat&labelColor=333333&logo=readthedocs&logoColor=white)](https://habedi.github.io/cogitator)
+[![Docs](https://img.shields.io/badge/docs-read-8ca0d7?style=flat&labelColor=333333&logo=readthedocs&logoColor=white)](https://habedi.github.io/cogitator)
 [![License](https://img.shields.io/badge/license-MIT-00acc1?style=flat&labelColor=333333&logo=open-source-initiative&logoColor=white)](https://github.com/habedi/cogitator/blob/main/LICENSE)
 [![DOI](https://img.shields.io/badge/doi-10.5281/zenodo.15331821-6f42c1.svg?style=flat&labelColor=333333&logo=zenodo&logoColor=white)](https://doi.org/10.5281/zenodo.15331821)
 
@@ -34,7 +34,7 @@ applications.
 ### Features
 
 * Provides unified sync/async API for CoT strategies
-* Supports using OpenAI and Ollama as LLM providers
+* Supports using OpenAI, Ollama, and OpenRouter as LLM providers
 * Supports structured model output with Pydantic validation
 * Includes a customizable benchmarking framework (see [benches](benches))
 * Includes implementations of popular CoT strategies and frameworks like

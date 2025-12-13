@@ -205,7 +205,14 @@ class GenerateOp(GoTOperation):
     """Generates new thoughts based on parent nodes."""
 
     async def execute_async(
-        self, grs, llm, prompts, embedder, semaphore, trace=None, **global_kwargs
+        self,
+        grs: GraphReasoningState,
+        llm: BaseLLM,
+        prompts: Dict[str, str],
+        embedder: Optional[BaseEmbedder] = None,
+        semaphore: Optional[asyncio.Semaphore] = None,
+        trace: Optional[Trace] = None,
+        **global_kwargs: Any,
     ) -> None:
         """Generates new thoughts asynchronously."""
         k = self.params.get("k", 1)
@@ -302,7 +309,14 @@ class GenerateOp(GoTOperation):
             f"GenerateOp created {len(newly_generated_nodes)} new nodes in set '{output_set}'."
         )
 
-    def execute(self, grs, llm, prompts, embedder, **global_kwargs) -> None:
+    def execute(
+        self,
+        grs: GraphReasoningState,
+        llm: BaseLLM,
+        prompts: Dict[str, str],
+        embedder: Optional[BaseEmbedder] = None,
+        **global_kwargs: Any,
+    ) -> None:
         # Synchronous version would mirror async logic without async/await/gather
         raise NotImplementedError(
             "Synchronous execute not fully implemented for GenerateOp sketch."
@@ -313,7 +327,14 @@ class AggregateOp(GoTOperation):
     """Aggregates multiple thoughts into new ones."""
 
     async def execute_async(
-        self, grs, llm, prompts, embedder, semaphore, trace=None, **global_kwargs
+        self,
+        grs: GraphReasoningState,
+        llm: BaseLLM,
+        prompts: Dict[str, str],
+        embedder: Optional[BaseEmbedder] = None,
+        semaphore: Optional[asyncio.Semaphore] = None,
+        trace: Optional[Trace] = None,
+        **global_kwargs: Any,
     ) -> None:
         """Aggregates thoughts asynchronously."""
         k = self.params.get("k", 1)
@@ -406,7 +427,14 @@ class AggregateOp(GoTOperation):
             f"AggregateOp created {len(newly_aggregated_nodes)} new nodes in set '{output_set}'."
         )
 
-    def execute(self, grs, llm, prompts, embedder, **global_kwargs) -> None:
+    def execute(
+        self,
+        grs: GraphReasoningState,
+        llm: BaseLLM,
+        prompts: Dict[str, str],
+        embedder: Optional[BaseEmbedder] = None,
+        **global_kwargs: Any,
+    ) -> None:
         raise NotImplementedError(
             "Synchronous execute not fully implemented for AggregateOp sketch."
         )
@@ -416,7 +444,14 @@ class ScoreOp(GoTOperation):
     """Scores thoughts using the LLM."""
 
     async def execute_async(
-        self, grs, llm, prompts, embedder, semaphore, trace=None, **global_kwargs
+        self,
+        grs: GraphReasoningState,
+        llm: BaseLLM,
+        prompts: Dict[str, str],
+        embedder: Optional[BaseEmbedder] = None,
+        semaphore: Optional[asyncio.Semaphore] = None,
+        trace: Optional[Trace] = None,
+        **global_kwargs: Any,
     ) -> None:
         """Scores nodes asynchronously."""
         target_set = self.params.get(
@@ -471,7 +506,14 @@ class ScoreOp(GoTOperation):
 
         logger.info(f"ScoreOp evaluated {len(nodes_to_score)} nodes in set '{target_set}'.")
 
-    def execute(self, grs, llm, prompts, embedder, **global_kwargs) -> None:
+    def execute(
+        self,
+        grs: GraphReasoningState,
+        llm: BaseLLM,
+        prompts: Dict[str, str],
+        embedder: Optional[BaseEmbedder] = None,
+        **global_kwargs: Any,
+    ) -> None:
         raise NotImplementedError("Synchronous execute not fully implemented for ScoreOp sketch.")
 
 
@@ -479,12 +521,27 @@ class KeepBestOp(GoTOperation):
     """Selects the top N nodes based on score."""
 
     async def execute_async(
-        self, grs, llm, prompts, embedder, semaphore, trace=None, **global_kwargs
+        self,
+        grs: GraphReasoningState,
+        llm: BaseLLM,
+        prompts: Dict[str, str],
+        embedder: Optional[BaseEmbedder] = None,
+        semaphore: Optional[asyncio.Semaphore] = None,
+        trace: Optional[Trace] = None,
+        **global_kwargs: Any,
     ) -> None:
         """Selects best nodes (synchronous logic sufficient)."""
         self.execute(grs, llm, prompts, embedder, trace=trace, **global_kwargs)
 
-    def execute(self, grs, llm, prompts, embedder, trace=None, **global_kwargs) -> None:
+    def execute(
+        self,
+        grs: GraphReasoningState,
+        llm: BaseLLM,
+        prompts: Dict[str, str],
+        embedder: Optional[BaseEmbedder] = None,
+        trace: Optional[Trace] = None,
+        **global_kwargs: Any,
+    ) -> None:
         """Selects best nodes."""
         n_best = self.params.get("N", 1)
         target_set = self.params.get("target_set", "scored")  # Operate on previously scored nodes
@@ -730,7 +787,7 @@ class GraphOfThoughts:
             "frontier"
         )  # Or use a specific output set name from GoO
         if not final_candidates:
-            # Fallback if frontier is empty - check last known generated/aggregated set etc.
+            # Fallback if the frontier is empty - check last known generated/aggregated set etc.
             # This needs robust handling based on GoO structure
             logger.warning("Frontier is empty, checking all nodes...")
             final_candidates = list(grs.all_nodes.values())
@@ -740,7 +797,7 @@ class GraphOfThoughts:
             err_msg = "Error: No reasoning paths generated."
             return (err_msg, trace) if with_trace and trace else err_msg
 
-        # Select best node based on score (or other criteria if defined)
+        # Select the best node based on score (or other criteria if defined)
         best_node = max(final_candidates, key=lambda n: n.score)
         logger.info(f"Selected best node (async): {best_node}")
 
@@ -775,7 +832,11 @@ class GraphOfThoughts:
                         parsed = await self.llm.generate_json_async(json_req, **gen_args)
                 else:
                     parsed = await self.llm.generate_json_async(json_req, **gen_args)
-                final_answer_value = parsed.final_answer
+                # Type narrowing to ensure mypy knows we have ExtractedAnswer
+                if isinstance(parsed, ExtractedAnswer):
+                    final_answer_value = parsed.final_answer
+                else:
+                    final_answer_value = getattr(parsed, "final_answer", None)
                 if isinstance(final_answer_value, str):
                     answer = final_answer_value.strip()
                 elif final_answer_value is not None:
