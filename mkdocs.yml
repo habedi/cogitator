@@ -40,6 +40,7 @@ nav:
           - api/model/base.md
           - api/model/openai.md
           - api/model/ollama.md
+          - api/model/openrouter.md
       - Strategies:
           - api/strategies/auto_cot.md
           - api/strategies/cdw_cot.md
