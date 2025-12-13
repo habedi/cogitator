@@ -341,6 +341,70 @@ def test_openrouter_inherits_from_openai(mock_openrouter_clients):
     assert hasattr(llm, "generate_json")
 
 
+class TestOpenRouterInternalMethods:
+    """Tests for OpenRouterLLM internal methods."""
+
+    @pytest.fixture
+    def openrouter_llm(self, mock_openrouter_clients):
+        from cogitator import OpenRouterLLM
+        return OpenRouterLLM(api_key="test-key", model="anthropic/claude-3.5-sonnet")
+
+    def test_reset_token_counts(self, openrouter_llm):
+        """Test that token counts can be reset."""
+        openrouter_llm._last_prompt_tokens = 100
+        openrouter_llm._last_completion_tokens = 50
+        openrouter_llm._reset_token_counts()
+        assert openrouter_llm._last_prompt_tokens is None
+        assert openrouter_llm._last_completion_tokens is None
+
+    def test_create_cache_key_deterministic(self, openrouter_llm):
+        """Test that cache key is deterministic for same inputs."""
+        key1 = openrouter_llm._create_cache_key("test prompt", temperature=0.7)
+        key2 = openrouter_llm._create_cache_key("test prompt", temperature=0.7)
+        assert key1 == key2
+
+    def test_create_cache_key_different_prompts(self, openrouter_llm):
+        """Test that different prompts produce different keys."""
+        key1 = openrouter_llm._create_cache_key("prompt 1")
+        key2 = openrouter_llm._create_cache_key("prompt 2")
+        assert key1 != key2
+
+    def test_create_cache_key_different_kwargs(self, openrouter_llm):
+        """Test that different kwargs produce different keys."""
+        key1 = openrouter_llm._create_cache_key("prompt", temperature=0.5)
+        key2 = openrouter_llm._create_cache_key("prompt", temperature=0.9)
+        assert key1 != key2
+
+    def test_attributes_initialized_correctly(self, openrouter_llm):
+        """Test that OpenRouter-specific attributes are initialized."""
+        assert openrouter_llm.model == "anthropic/claude-3.5-sonnet"
+        assert openrouter_llm.temperature == 0.7
+        assert openrouter_llm.max_tokens == 512
+        assert openrouter_llm.seed == 33
+        assert openrouter_llm._cache == {}
+
+    def test_tiktoken_encoding_loaded(self, openrouter_llm):
+        """Test that tiktoken encoding is loaded for token counting."""
+        assert hasattr(openrouter_llm, "encoding")
+        # Should use cl100k_base for OpenRouter models
+        if openrouter_llm.encoding is not None:
+            assert openrouter_llm.encoding.name == "cl100k_base"
+
+    def test_no_site_headers_by_default(self, mocker):
+        """Test that no headers are added when site info not provided."""
+        from cogitator import OpenRouterLLM
+
+        mock_sync = MagicMock()
+        mock_async = AsyncMock()
+        sync_patch = mocker.patch("cogitator.model.openrouter.SyncOpenAI", return_value=mock_sync)
+        mocker.patch("cogitator.model.openrouter.AsyncOpenAI", return_value=mock_async)
+
+        llm = OpenRouterLLM(api_key="test-key")
+
+        call_kwargs = sync_patch.call_args[1]
+        assert "default_headers" not in call_kwargs or call_kwargs["default_headers"] == {}
+
+
 # ============================================================================
 # Configurable Model Capabilities Tests
 # ============================================================================
@@ -422,3 +486,271 @@ def test_openai_capability_affects_api_params(mock_openai_clients):
     # Should fall through to attempting json_schema anyway since schema is provided
     # but mode may differ based on fallback logic
     assert mode2 is None or mode2 == "json_schema"  # Depends on fallback behavior
+
+
+# ============================================================================
+# OllamaLLM Internal Method Tests (Minimal Mocking)
+# ============================================================================
+
+
+class TestOllamaStripContent:
+    """Tests for OllamaLLM._strip_content method - no API mocking needed."""
+
+    @pytest.fixture
+    def ollama_llm(self, mock_ollama_clients):
+        return OllamaLLM(model="test-model")
+
+    def test_strip_content_from_dict_message(self, ollama_llm):
+        """Test extracting content from dict response with message dict."""
+        resp = {"message": {"content": "  Hello world  "}}
+        assert ollama_llm._strip_content(resp) == "Hello world"
+
+    def test_strip_content_from_dict_empty(self, ollama_llm):
+        """Test extracting content from dict with empty content."""
+        resp = {"message": {"content": ""}}
+        assert ollama_llm._strip_content(resp) == ""
+
+    def test_strip_content_from_dict_missing_content(self, ollama_llm):
+        """Test extracting content from dict without content key."""
+        resp = {"message": {}}
+        assert ollama_llm._strip_content(resp) == ""
+
+    def test_strip_content_from_dict_missing_message(self, ollama_llm):
+        """Test extracting content from dict without message key."""
+        resp = {}
+        assert ollama_llm._strip_content(resp) == ""
+
+    def test_strip_content_from_object(self, ollama_llm):
+        """Test extracting content from object with message.content attribute."""
+        class FakeMessage:
+            content = "  Object content  "
+
+        class FakeResponse:
+            message = FakeMessage()
+
+        assert ollama_llm._strip_content(FakeResponse()) == "Object content"
+
+    def test_strip_content_numeric_value(self, ollama_llm):
+        """Test that numeric content is converted to string."""
+        resp = {"message": {"content": 42}}
+        assert ollama_llm._strip_content(resp) == "42"
+
+    def test_strip_content_float_value(self, ollama_llm):
+        """Test that float content is converted to string."""
+        resp = {"message": {"content": 3.14}}
+        assert ollama_llm._strip_content(resp) == "3.14"
+
+
+class TestOllamaPrepareOptions:
+    """Tests for OllamaLLM._prepare_options method."""
+
+    @pytest.fixture
+    def ollama_llm(self, mock_ollama_clients):
+        return OllamaLLM(
+            model="test-model",
+            temperature=0.7,
+            max_tokens=1024,
+            seed=33,
+            stop=None
+        )
+
+    def test_default_options(self, ollama_llm):
+        """Test that defaults are used when no overrides provided."""
+        opts = ollama_llm._prepare_options()
+        assert opts["temperature"] == 0.7
+        assert opts["num_predict"] == 1024
+        assert opts["seed"] == 33
+        assert "stop" not in opts
+
+    def test_override_temperature(self, ollama_llm):
+        """Test overriding temperature."""
+        opts = ollama_llm._prepare_options(temperature=0.1)
+        assert opts["temperature"] == 0.1
+
+    def test_override_max_tokens(self, ollama_llm):
+        """Test overriding max_tokens -> num_predict."""
+        opts = ollama_llm._prepare_options(max_tokens=512)
+        assert opts["num_predict"] == 512
+
+    def test_override_seed(self, ollama_llm):
+        """Test overriding seed."""
+        opts = ollama_llm._prepare_options(seed=42)
+        assert opts["seed"] == 42
+
+    def test_add_stop_sequences(self, ollama_llm):
+        """Test adding stop sequences."""
+        opts = ollama_llm._prepare_options(stop=["STOP", "END"])
+        assert opts["stop"] == ["STOP", "END"]
+
+    def test_extra_kwargs_passed_through(self, ollama_llm):
+        """Test that extra kwargs are passed through."""
+        opts = ollama_llm._prepare_options(top_k=40, top_p=0.9)
+        assert opts["top_k"] == 40
+        assert opts["top_p"] == 0.9
+
+    def test_invalid_seed_removed(self, ollama_llm):
+        """Test that invalid seed values are removed."""
+        opts = ollama_llm._prepare_options(seed="invalid")
+        assert "seed" not in opts
+
+    def test_none_values_filtered(self, ollama_llm):
+        """Test that None values are filtered out."""
+        opts = ollama_llm._prepare_options(seed=None)
+        assert "seed" not in opts
+
+
+class TestOllamaUpdateTokenCounts:
+    """Tests for OllamaLLM._update_token_counts method."""
+
+    @pytest.fixture
+    def ollama_llm(self, mock_ollama_clients):
+        return OllamaLLM(model="test-model")
+
+    def test_uses_api_counts_when_available(self, ollama_llm):
+        """Test that API token counts are used when present."""
+        resp = {"prompt_eval_count": 100, "eval_count": 50}
+        ollama_llm._update_token_counts("test prompt", resp, "test completion")
+        assert ollama_llm._last_prompt_tokens == 100
+        assert ollama_llm._last_completion_tokens == 50
+
+    def test_falls_back_to_approximation(self, ollama_llm):
+        """Test fallback to approx_token_length when API counts missing."""
+        resp = {}
+        ollama_llm._update_token_counts("hello world", resp, "hi there")
+        # Approximation should produce some counts
+        assert ollama_llm._last_prompt_tokens is not None
+        assert ollama_llm._last_completion_tokens is not None
+        assert ollama_llm._last_prompt_tokens >= 2  # "hello world" = 2 words
+
+    def test_handles_non_dict_response(self, ollama_llm):
+        """Test handling of non-dict response (uses approximation)."""
+        ollama_llm._update_token_counts("test", "not a dict", "response")
+        assert ollama_llm._last_prompt_tokens is not None
+
+
+# ============================================================================
+# OpenAILLM Internal Method Tests (Minimal Mocking)
+# ============================================================================
+
+
+class TestOpenAIPrepareApiParams:
+    """Tests for OpenAILLM._prepare_api_params method."""
+
+    @pytest.fixture
+    def openai_llm_gpt4o(self, mock_openai_clients):
+        """GPT-4O supports structured output and JSON mode."""
+        return OpenAILLM(api_key="test", model="gpt-4o")
+
+    @pytest.fixture
+    def openai_llm_gpt35(self, mock_openai_clients):
+        """GPT-3.5 supports JSON mode but not structured output."""
+        return OpenAILLM(api_key="test", model="gpt-3.5-turbo-1106")
+
+    @pytest.fixture
+    def openai_llm_unknown(self, mock_openai_clients):
+        """Unknown model doesn't support JSON mode by default."""
+        return OpenAILLM(api_key="test", model="unknown-model")
+
+    def test_no_json_mode_returns_basic_params(self, openai_llm_gpt4o):
+        """Test that non-JSON mode returns basic params."""
+        params, mode = openai_llm_gpt4o._prepare_api_params(is_json_mode=False)
+        assert "response_format" not in params
+        assert mode is None
+
+    def test_json_mode_with_schema_uses_json_schema(self, openai_llm_gpt4o):
+        """Test JSON mode with schema uses json_schema format for gpt-4o."""
+        params, mode = openai_llm_gpt4o._prepare_api_params(
+            is_json_mode=True,
+            response_schema=DummySchema
+        )
+        assert mode == "json_schema"
+        assert params["response_format"]["type"] == "json_schema"
+
+    def test_json_mode_without_schema_uses_json_object(self, openai_llm_gpt4o):
+        """Test JSON mode without schema uses json_object format."""
+        params, mode = openai_llm_gpt4o._prepare_api_params(
+            is_json_mode=True,
+            response_schema=None
+        )
+        assert mode == "json_object"
+        assert params["response_format"]["type"] == "json_object"
+
+    def test_gpt35_uses_json_object_not_schema(self, openai_llm_gpt35):
+        """Test GPT-3.5 uses json_object even with schema (no structured output)."""
+        params, mode = openai_llm_gpt35._prepare_api_params(
+            is_json_mode=True,
+            response_schema=DummySchema
+        )
+        # GPT-3.5 doesn't support structured output, should fall back
+        assert mode == "json_object"
+        assert params["response_format"]["type"] == "json_object"
+
+    def test_unknown_model_falls_back_to_json_schema(self, openai_llm_unknown):
+        """Test unknown model falls back to json_schema when schema provided."""
+        params, mode = openai_llm_unknown._prepare_api_params(
+            is_json_mode=True,
+            response_schema=DummySchema
+        )
+        # Unknown model attempts json_schema anyway when schema is provided
+        # (with a warning logged)
+        assert mode == "json_schema"
+
+    def test_kwargs_passed_through(self, openai_llm_gpt4o):
+        """Test that extra kwargs are passed through."""
+        params, _ = openai_llm_gpt4o._prepare_api_params(
+            is_json_mode=False,
+            custom_param="value"
+        )
+        assert params["custom_param"] == "value"
+
+
+class TestOpenAIUpdateTokenCounts:
+    """Tests for OpenAILLM._update_token_counts method."""
+
+    @pytest.fixture
+    def openai_llm(self, mock_openai_clients):
+        return OpenAILLM(api_key="test", model="gpt-4o-mini")
+
+    def test_uses_api_counts_when_available(self, openai_llm):
+        """Test that API usage counts are used when present."""
+        class FakeUsage:
+            prompt_tokens = 150
+            completion_tokens = 75
+
+        class FakeResponse:
+            usage = FakeUsage()
+
+        openai_llm._update_token_counts("test", FakeResponse(), "completion")
+        assert openai_llm._last_prompt_tokens == 150
+        assert openai_llm._last_completion_tokens == 75
+
+    def test_falls_back_to_tiktoken(self, openai_llm):
+        """Test fallback to tiktoken when API counts missing."""
+        class FakeResponse:
+            usage = None
+
+        openai_llm._update_token_counts("hello world test", FakeResponse(), "response text")
+        # Should use tiktoken approximation
+        assert openai_llm._last_prompt_tokens is not None
+        assert openai_llm._last_prompt_tokens > 0
+
+
+class TestOpenAITokenCounting:
+    """Tests for OpenAILLM token counting methods."""
+
+    @pytest.fixture
+    def openai_llm(self, mock_openai_clients):
+        return OpenAILLM(api_key="test", model="gpt-4o-mini")
+
+    def test_get_last_prompt_tokens_initially_none(self, openai_llm):
+        """Test that token counts start as None."""
+        assert openai_llm.get_last_prompt_tokens() is None
+        assert openai_llm.get_last_completion_tokens() is None
+
+    def test_reset_token_counts(self, openai_llm):
+        """Test resetting token counts."""
+        openai_llm._last_prompt_tokens = 100
+        openai_llm._last_completion_tokens = 50
+        openai_llm._reset_token_counts()
+        assert openai_llm._last_prompt_tokens is None
+        assert openai_llm._last_completion_tokens is None

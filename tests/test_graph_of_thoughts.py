@@ -11,6 +11,7 @@ EXAMPLE_BASIC_GOO: List[Tuple[str, Dict]] = [
     ('KeepBest', {'N': 1, 'target_set': 'generated_step1', 'output_set': 'best_final_node'})
 ]
 
+
 @pytest.mark.asyncio
 async def test_run_async_returns_result_and_calls_prompts_text_format(
     fake_llm_factory, patch_embedding_clustering):
@@ -51,6 +52,7 @@ async def test_run_async_returns_result_and_calls_prompts_text_format(
     assert score_op_call is not None, "Async ScoreOp LLM call not found"
     assert "JSON Evaluation:" in score_op_call["prompt"], "ScoreOp did not use expected prompt content"
     assert final_answer_call is not None, "Async final answer generation call (text) not found"
+
 
 @pytest.mark.asyncio
 async def test_run_async_returns_result_and_calls_prompts_json_format(
