@@ -107,10 +107,11 @@ class OpenRouterLLM(OpenAILLM):
         self._last_prompt_tokens = None
         self._last_completion_tokens = None
 
-    def _create_cache_key(self, **kwargs: Any) -> str:
-        """Creates a hashable cache key from keyword arguments."""
+    def _create_cache_key(self, prompt: str, **kwargs: Any) -> str:
+        """Creates a hashable cache key from prompt and keyword arguments."""
         import hashlib
         import json
 
-        key_str = json.dumps(kwargs, sort_keys=True, default=str)
+        key_data = {"prompt": prompt, **kwargs}
+        key_str = json.dumps(key_data, sort_keys=True, default=str)
         return hashlib.sha256(key_str.encode()).hexdigest()

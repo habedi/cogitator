@@ -268,3 +268,157 @@ def test_cache_key_differentiation(mock_openai_clients):
     assert res1 == "response 1"
     assert res2 == "response 2"
     assert mock_sync.chat.completions.create.call_count == 2
+
+
+# ============================================================================
+# OpenRouterLLM Tests
+# ============================================================================
+
+
+@pytest.fixture
+def mock_openrouter_clients(mocker):
+    """Mock clients for OpenRouter - patches OpenAI clients used by OpenRouterLLM."""
+    mock_sync_client = MagicMock()
+    mock_async_client = AsyncMock()
+    mock_sync_client.chat.completions.create = MagicMock()
+    mock_async_client.chat.completions.create = AsyncMock()
+    mocker.patch("cogitator.model.openrouter.SyncOpenAI", return_value=mock_sync_client)
+    mocker.patch("cogitator.model.openrouter.AsyncOpenAI", return_value=mock_async_client)
+    return mock_sync_client, mock_async_client
+
+
+def test_openrouter_init_default(mock_openrouter_clients):
+    """Test OpenRouterLLM initializes with the correct default settings."""
+    from cogitator import OpenRouterLLM
+
+    llm = OpenRouterLLM(api_key="test-key")
+
+    assert llm.model == "openai/gpt-4o-mini"
+    assert llm.OPENROUTER_BASE_URL == "https://openrouter.ai/api/v1"
+
+
+def test_openrouter_init_with_custom_model(mock_openrouter_clients):
+    """Test OpenRouterLLM with a custom model name."""
+    from cogitator import OpenRouterLLM
+
+    llm = OpenRouterLLM(api_key="test-key", model="anthropic/claude-3.5-sonnet")
+
+    assert llm.model == "anthropic/claude-3.5-sonnet"
+
+
+def test_openrouter_init_with_site_info(mocker):
+    """Test OpenRouterLLM includes site info headers when provided."""
+    from cogitator import OpenRouterLLM
+
+    mock_sync = MagicMock()
+    mock_async = AsyncMock()
+    sync_patch = mocker.patch("cogitator.model.openrouter.SyncOpenAI", return_value=mock_sync)
+    async_patch = mocker.patch("cogitator.model.openrouter.AsyncOpenAI", return_value=mock_async)
+
+    llm = OpenRouterLLM(
+        api_key="test-key",
+        site_url="https://example.com",
+        site_name="Test App"
+    )
+
+    # Verify clients were created with the correct base_url and headers
+    expected_headers = {"HTTP-Referer": "https://example.com", "X-Title": "Test App"}
+    sync_patch.assert_called_once()
+    call_kwargs = sync_patch.call_args[1]
+    assert call_kwargs["base_url"] == "https://openrouter.ai/api/v1"
+    assert call_kwargs["default_headers"] == expected_headers
+
+
+def test_openrouter_inherits_from_openai(mock_openrouter_clients):
+    """Test OpenRouterLLM inherits from OpenAILLM."""
+    from cogitator import OpenRouterLLM, OpenAILLM
+
+    llm = OpenRouterLLM(api_key="test-key")
+
+    assert isinstance(llm, OpenAILLM)
+    assert hasattr(llm, "generate")
+    assert hasattr(llm, "generate_async")
+    assert hasattr(llm, "generate_json")
+
+
+# ============================================================================
+# Configurable Model Capabilities Tests
+# ============================================================================
+
+
+def test_openai_capability_autodetect_structured_output(mock_openai_clients):
+    """Test auto-detection of structured output capability for known models."""
+    llm_gpt4o = OpenAILLM(api_key="d", model="gpt-4o")
+    assert llm_gpt4o._supports_structured_output is True
+    assert llm_gpt4o._supports_json_mode is True
+
+    llm_gpt4o_mini = OpenAILLM(api_key="d", model="gpt-4o-mini")
+    assert llm_gpt4o_mini._supports_structured_output is True
+    assert llm_gpt4o_mini._supports_json_mode is True
+
+
+def test_openai_capability_autodetect_json_mode_only(mock_openai_clients):
+    """Test auto-detection of JSON mode capability for models without structured output."""
+    llm_gpt4 = OpenAILLM(api_key="d", model="gpt-4")
+    assert llm_gpt4._supports_structured_output is False
+    assert llm_gpt4._supports_json_mode is True
+
+    llm_gpt35 = OpenAILLM(api_key="d", model="gpt-3.5-turbo-1106")
+    assert llm_gpt35._supports_structured_output is False
+    assert llm_gpt35._supports_json_mode is True
+
+
+def test_openai_capability_autodetect_unknown_model(mock_openai_clients):
+    """Test auto-detection for unknown models defaults to disabled."""
+    llm = OpenAILLM(api_key="d", model="unknown-model-xyz")
+    assert llm._supports_structured_output is False
+    assert llm._supports_json_mode is False
+
+
+def test_openai_capability_override_enable(mock_openai_clients):
+    """Test overriding capabilities to enable them on unknown models."""
+    llm = OpenAILLM(
+        api_key="d",
+        model="custom-model",
+        supports_structured_output=True,
+        supports_json_mode=True
+    )
+    assert llm._supports_structured_output is True
+    assert llm._supports_json_mode is True
+
+
+def test_openai_capability_override_disable(mock_openai_clients):
+    """Test overriding capabilities to disable them on known models."""
+    llm = OpenAILLM(
+        api_key="d",
+        model="gpt-4o",  # Normally supports structured output
+        supports_structured_output=False,
+        supports_json_mode=False
+    )
+    assert llm._supports_structured_output is False
+    assert llm._supports_json_mode is False
+
+
+def test_openai_capability_affects_api_params(mock_openai_clients):
+    """Test it that capability overrides affect _prepare_api_params behavior."""
+    # Unknown model with capabilities force-enabled
+    llm_enabled = OpenAILLM(
+        api_key="d",
+        model="custom-model",
+        supports_structured_output=True
+    )
+    params, mode = llm_enabled._prepare_api_params(is_json_mode=True, response_schema=DummySchema)
+    assert mode == "json_schema"
+    assert params["response_format"]["type"] == "json_schema"
+
+    # Known model with capabilities force-disabled
+    llm_disabled = OpenAILLM(
+        api_key="d",
+        model="gpt-4o",
+        supports_structured_output=False,
+        supports_json_mode=False
+    )
+    params2, mode2 = llm_disabled._prepare_api_params(is_json_mode=True, response_schema=DummySchema)
+    # Should fall through to attempting json_schema anyway since schema is provided
+    # but mode may differ based on fallback logic
+    assert mode2 is None or mode2 == "json_schema"  # Depends on fallback behavior

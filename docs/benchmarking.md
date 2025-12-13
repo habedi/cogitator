@@ -15,10 +15,10 @@ Available Options for `run.py`:
   `strategyqa`, `coin`, and `letter`.
 * `--cutoff <number>`: Number of samples to load from the dataset (-1 for all; default: `50`). These samples are used
   for both setup (if needed) and generation and testing.
-* `--provider <provider>`: LLM provider (`ollama` or `openai`; default: `ollama`).
-* `--model-name <model>`: Model name for the provider (default: `gemma2:9b` for ollama, `gpt-4o-mini` for openai). Verify model
+* `--provider <provider>`: LLM provider (`ollama`, `openai`, or `openrouter`; default: `ollama`).
+* `--model-name <model>`: Model name for the provider (default: `gemma3:4b` for ollama, `gpt-4o-mini` for openai, `openai/gpt-4o-mini` for openrouter). Verify model
   availability.
-* `--openai-key <key>`: OpenAI API key (needed for `--provider openai`, can use `OPENAI_API_KEY` environment variable if
+* `--openai-key <key>`: API key (needed for `--provider openai` or `openrouter`, can use `OPENAI_API_KEY` or `OPENROUTER_API_KEY` environment variable if
   it is set).
 * `--use-async`: Use asynchronous execution for LLM calls (default: sync). Highly recommended for speed.
 * `--concurrency <number>`: Max concurrent LLM requests when using `--use-async` (default: `3`).
@@ -142,7 +142,7 @@ Make sure the OpenAI key is set correctly if using the OpenAI models.
 ### More Examples
 
 ```bash
-# Run using benches.yml (assuming it's configured for Ollama, gemma2:9b, aqua, async, etc.)
+# Run using benches.yml (assuming it's configured for Ollama, gemma3:4b, aqua, async, etc.)
 poetry run python benches/run.py --output-file my_ollama_results.jsonl
 
 # Evaluate the results using heuristic (as configured in benches.yml or default)

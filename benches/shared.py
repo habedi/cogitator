@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 import yaml
 from datasets import Dataset, concatenate_datasets, load_dataset
 
-from cogitator import BaseLLM, OllamaLLM, OpenAILLM
+from cogitator import BaseLLM, OllamaLLM, OpenAILLM, OpenRouterLLM
 from cogitator.schemas import ExtractedAnswer
 
 logger = logging.getLogger("benchmark_shared")
@@ -253,7 +253,12 @@ def get_llm(
 ) -> BaseLLM:
     role = "Extractor" if is_extractor else "Primary"
     if model_name is None:
-        model_name = "gpt-4o-mini" if provider == "openai" else "gemma3:4b"
+        if provider == "openai":
+            model_name = "gpt-4o-mini"
+        elif provider == "openrouter":
+            model_name = "openai/gpt-4o-mini"
+        else:
+            model_name = "gemma3:4b"
         logger.info(f"{role} model name not specified, using default for {provider}: {model_name}")
 
     base_llm_params = {
@@ -275,6 +280,13 @@ def get_llm(
                 raise ValueError(
                     "OpenAI provider selected but no API key found in args or env var.")
         return OpenAILLM(api_key=openai_key, model=model_name, **base_llm_params)
+    elif provider == "openrouter":
+        if not openai_key:
+            openai_key = os.getenv("OPENROUTER_API_KEY") or os.getenv(DEFAULT_OPENAI_ENV_VAR)
+            if not openai_key:
+                raise ValueError(
+                    "OpenRouter provider selected but no API key found in args or env var.")
+        return OpenRouterLLM(api_key=openai_key, model=model_name, **base_llm_params)
     elif provider == "ollama":
         return OllamaLLM(model=model_name, ollama_host=ollama_host, **base_llm_params)
     else:
@@ -629,7 +641,7 @@ def add_generation_args(parser: argparse.ArgumentParser):
                         help=f"Dataset name (overrides config, default: {DEFAULT_DATASET})")
     parser.add_argument("--cutoff", type=int, default=DEFAULT_CUTOFF,
                         help=f"Number of samples (-1 for all, overrides config, default: {DEFAULT_CUTOFF})")
-    parser.add_argument("--provider", choices=["openai", "ollama"], default=DEFAULT_PROVIDER,
+    parser.add_argument("--provider", choices=["openai", "ollama", "openrouter"], default=DEFAULT_PROVIDER,
                         help=f"LLM provider for generation (overrides config, default: {DEFAULT_PROVIDER})")
     parser.add_argument("--model-name", default=None,
                         help="Generation model name (overrides config, default: gemma3:4b for ollama, gpt-4o-mini for openai)")
@@ -649,7 +661,7 @@ def add_evaluation_args(parser: argparse.ArgumentParser):
     parser.add_argument("--extractor-type", choices=["heuristic", "llm"],
                         default=DEFAULT_EXTRACTOR_TYPE,
                         help=f"Extractor type (overrides config, default: {DEFAULT_EXTRACTOR_TYPE})")
-    parser.add_argument("--provider", choices=["openai", "ollama"], default=DEFAULT_PROVIDER,
+    parser.add_argument("--provider", choices=["openai", "ollama", "openrouter"], default=DEFAULT_PROVIDER,
                         help=f"LLM provider for LLM-based extraction (overrides config, default: {DEFAULT_PROVIDER})")
     parser.add_argument("--model-name", default=None,
                         help="Model name for LLM-based extraction (overrides config, default: gemma3:4b for ollama, gpt-4o-mini for openai)")

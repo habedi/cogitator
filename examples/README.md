@@ -18,12 +18,17 @@
 
 ```bash
 # Run the Least-to-Most example (OpenAI)
-python examples/run_least_to_most.py --provider openai --model-name gpt-4.1-nano
+python examples/run_least_to_most.py --provider openai --model-name gpt-4.1
 ```
 
 ```bash
 # Run the Self-Consistency example (Ollama)
 python examples/run_least_to_most.py --provider ollama --model-name gemma3:4b
+```
+
+```bash
+# Run the Self-Consistency example (OpenRouter)
+python examples/run_least_to_most.py --provider openrouter --model-name anthropic/claude-4.5-sonnet
 ```
 
 ```bash
