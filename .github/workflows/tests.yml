@@ -7,6 +7,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: "tests"
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
