@@ -22,7 +22,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -36,24 +36,17 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
-      - name: Load Cached Venv
-        id: cached-poetry-dependencies
-        uses: actions/cache@v4
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
-
-      - name: Install Dependencies
+      - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: make install
 
-      - name: Build Documentation
+      - name: Build documentation
         run: make docs
 
-      - name: Setup Pages
+      - name: Setup pages
         uses: actions/configure-pages@v5
 
-      - name: Upload Documentation as Artifact
+      - name: Upload documentation as artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: './site'

@@ -2,10 +2,15 @@ name: Run Tests
 
 on:
   workflow_dispatch:
+  schedule: # Run every day at midnight (UTC)
+    - cron: '0 0 * * *'
   workflow_call:
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
 
 concurrency:
   group: "tests"
