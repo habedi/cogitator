@@ -80,3 +80,7 @@ benches/data/
 coverage_*_report
 *.jsonl
 site/
+.claude/
+.codex
+.antigravitycli/
+.agents/
