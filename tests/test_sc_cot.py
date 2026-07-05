@@ -153,3 +153,112 @@ async def test_run_stream_async_not_implemented(fake_llm_factory):
     with pytest.raises(NotImplementedError):
         # Corrected: await the coroutine
         await sc.run_stream_async("anything")
+
+
+def test_extract_answer_heuristic_markdown_and_colon():
+    sc = SelfConsistency(llm=None)
+    # m3 (markdown)
+    assert sc._extract_answer_heuristic("**A: 42**") == "42"
+    assert sc._extract_answer_heuristic("*A: 9.9*") == "9.9"
+    # m4 (colon end)
+    assert sc._extract_answer_heuristic("The value is: 24") == "24"
+    assert sc._extract_answer_heuristic("Result: abc") == "abc"
+
+
+def test_json_extraction_no_prompt(fake_llm_factory):
+    llm = fake_llm_factory()
+    sc = SelfConsistency(llm=llm, internal_extraction_format="json")
+    sc.answer_extraction_prompt = None
+    assert sc.extract_answer("Result=42") == "42"
+
+
+@pytest.mark.asyncio
+async def test_json_extraction_no_prompt_async(fake_llm_factory):
+    llm = fake_llm_factory()
+    sc = SelfConsistency(llm=llm, internal_extraction_format="json")
+    sc.answer_extraction_prompt = None
+    assert await sc.extract_answer_async("Result=42") == "42"
+
+
+def test_json_extraction_failure_fallback(fake_llm_factory):
+    from unittest.mock import MagicMock
+    llm = fake_llm_factory()
+    llm.generate_json = MagicMock(side_effect=Exception("mock API error"))
+    sc = SelfConsistency(llm=llm, internal_extraction_format="json")
+    assert sc.extract_answer("Result=99") == "99"
+
+
+@pytest.mark.asyncio
+async def test_json_extraction_failure_fallback_async(fake_llm_factory):
+    llm = fake_llm_factory()
+    async def mock_fail(*args, **kwargs):
+        raise Exception("mock API error async")
+    llm.generate_json_async = mock_fail
+    sc = SelfConsistency(llm=llm, internal_extraction_format="json")
+    assert await sc.extract_answer_async("Result=99") == "99"
+
+
+def test_run_with_empty_answers_and_errors(fake_llm_factory):
+    from unittest.mock import MagicMock
+    llm = fake_llm_factory()
+    def mock_gen(prompt, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise Exception("sample error")
+        elif call_count == 2:
+            return ""
+        return "Result=42"
+    
+    call_count = 0
+    llm.generate = mock_gen
+    sc = SelfConsistency(llm=llm, n_samples=3)
+    assert sc.run("prompt") == "42"
+
+    llm_none = fake_llm_factory()
+    llm_none.generate = MagicMock(side_effect=Exception("always fails"))
+    sc_none = SelfConsistency(llm=llm_none, n_samples=2)
+    assert sc_none.run("prompt") == ""
+
+
+@pytest.mark.asyncio
+async def test_run_async_with_empty_answers_and_errors(fake_llm_factory):
+    call_count = 0
+    async def mock_gen_async(prompt, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise Exception("sample error async")
+        elif call_count == 2:
+            return ""
+        return "Result=10"
+    
+    llm = fake_llm_factory()
+    llm.generate_async = mock_gen_async
+    sc = SelfConsistency(llm=llm, n_samples=3)
+    assert await sc.run_async("prompt") == "10"
+
+    async def mock_always_fail(*args, **kwargs):
+        raise Exception("always fails async")
+    llm_none = fake_llm_factory()
+    llm_none.generate_async = mock_always_fail
+    sc_none = SelfConsistency(llm=llm_none, n_samples=2)
+    assert await sc_none.run_async("prompt") == ""
+
+
+def test_run_counter_index_error(mocker, fake_llm_factory):
+    from collections import Counter
+    mocker.patch.object(Counter, "most_common", return_value=[])
+    llm = fake_llm_factory({"generate_sync": ["Result=42"]})
+    sc = SelfConsistency(llm=llm, n_samples=1)
+    assert sc.run("prompt") == ""
+
+
+@pytest.mark.asyncio
+async def test_run_async_counter_index_error(mocker, fake_llm_factory):
+    from collections import Counter
+    mocker.patch.object(Counter, "most_common", return_value=[])
+    llm = fake_llm_factory({"generate_async": ["Result=42"]})
+    sc = SelfConsistency(llm=llm, n_samples=1)
+    assert await sc.run_async("prompt") == ""
+
