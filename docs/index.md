@@ -41,12 +41,12 @@ Or, if you want to install from the latest version with examples and benchmarks 
 ```bash
 git clone https://github.com/habedi/cogitator && cd cogitator
 
-# Set up Python environment (use Poetry 2.0+)
-pip install poetry
-poetry install --all-extras
+# Set up the Python environment with uv
+pip install uv
+uv sync --locked
 
 # Run the tests to make sure everything is working (optional)
-poetry run pytest
+uv run pytest
 ```
 
 ### Examples

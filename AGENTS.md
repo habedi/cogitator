@@ -72,7 +72,7 @@ This validation ensures that structural outputs, decompositions, and evaluation 
 ## Python Conventions
 
 - Python version `>=3.10` as declared in the package configuration.
-- Dependency management using Poetry.
+- Dependency management using uv.
 - Formatting, linting, and import sorting using Ruff.
 - Typechecking using MyPy.
 - Test execution using PyTest.

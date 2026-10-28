@@ -6,7 +6,7 @@ A separate script, `benches/evaluate.py`, is used afterward to calculate accurac
 Run the generation script from the project root directory:
 
 ```bash
-poetry run python benches/run.py [OPTIONS]
+uv run python benches/run.py [OPTIONS]
 ```
 
 Available Options for `run.py`:
@@ -47,20 +47,20 @@ The `run.py` script executes the following steps:
     * The raw text output from the LLM and the execution time are recorded.
 6. **Output:** Results are saved line-by-line in JSONL format to the specified output file.
 
-See `poetry run python benches/run.py --help` to see all available options.
+See `uv run python benches/run.py --help` to see all available options.
 
 ### Evaluation (`evaluate.py`)
 
 After `run.py` generates the result file, use `evaluate.py` to calculate metrics:
 
 ```bash
-poetry run python benches/evaluate.py --input-file <path_to_results.jsonl> [EVAL_OPTIONS]
+uv run python benches/evaluate.py --input-file <path_to_results.jsonl> [EVAL_OPTIONS]
 ```
 
 This script reads the JSONL file, loads its configuration from `benches.yml` and merges with CLI options, extracts the
 final answer from the raw model output (using the configured extractor type: heuristic or LLM), compares it to the
 correct answer, and calculates the accuracy for each CoT strategy present in the result file. It then shows a summary
-table. See `poetry run python benches/evaluate.py --help` for evaluation-specific options.
+table. See `uv run python benches/evaluate.py --help` for evaluation-specific options.
 
 ### Configuration (`benches.yml`)
 
@@ -119,12 +119,12 @@ See the example `benches.yml` in the repository for detailed options.
 * Run using configuration defined in `benches.yml`:
     ```bash
     # Assumes benches.yml is configured as desired
-    poetry run python benches/run.py
+    uv run python benches/run.py
     ```
 
 * Run using `benches.yml` but override the dataset via command line:
     ```bash
-    poetry run python benches/run.py --dataset aqua
+    uv run python benches/run.py --dataset aqua
     ```
 
 ### Dependencies
@@ -132,7 +132,7 @@ See the example `benches.yml` in the repository for detailed options.
 To run the benchmarks, you might want to install the development dependencies along with Cogitator itself.
 
 ```bash
-poetry install --all-extras # Needs Poetry 2.0+
+uv sync --locked
 ```
 
 Additionally, any model used in the benchmarks must be available.
@@ -143,19 +143,19 @@ Make sure the OpenAI key is set correctly if using the OpenAI models.
 
 ```bash
 # Run using benches.yml (assuming it's configured for Ollama, gemma3:4b, aqua, async, etc.)
-poetry run python benches/run.py --output-file my_ollama_results.jsonl
+uv run python benches/run.py --output-file my_ollama_results.jsonl
 
 # Evaluate the results using heuristic (as configured in benches.yml or default)
-poetry run python benches/evaluate.py --input-file my_ollama_results.jsonl --show-details
+uv run python benches/evaluate.py --input-file my_ollama_results.jsonl --show-details
 
 # Evaluate the results using LLM extractor (override benches.yml extractor setting)
-poetry run python benches/evaluate.py --extractor-type llm --provider ollama --model-name llama3 --input-file my_ollama_results.jsonl
+uv run python benches/evaluate.py --extractor-type llm --provider ollama --model-name llama3 --input-file my_ollama_results.jsonl
 
 # Run specifically with OpenAI, overriding YAML if necessary
-poetry run python benches/run.py --provider openai --model-name gpt-4o-mini --dataset csqa --cutoff 10 --use-async --output-file my_openai_results.jsonl
+uv run python benches/run.py --provider openai --model-name gpt-4o-mini --dataset csqa --cutoff 10 --use-async --output-file my_openai_results.jsonl
 
 # Evaluate the OpenAI results using an OpenAI extractor model
-poetry run python benches/evaluate.py --input-file my_openai_results.jsonl --extractor-type llm --provider openai --model-name gpt-4o-mini
+uv run python benches/evaluate.py --input-file my_openai_results.jsonl --extractor-type llm --provider openai --model-name gpt-4o-mini
 ```
 
 ## Performance Metric
