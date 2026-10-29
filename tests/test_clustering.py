@@ -43,9 +43,9 @@ class TestKMeansClusterer:
             [10.0, 10.0],
             [10.2, 9.8]
         ])
-        
+
         labels, centers = clusterer.cluster(embeddings, n_clusters=2, random_seed=42)
-        
+
         assert len(labels) == 4
         assert labels[0] == labels[1]
         assert labels[2] == labels[3]
