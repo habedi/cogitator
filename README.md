@@ -91,7 +91,7 @@ except Exception as e:
 sc_strategy = SelfConsistency(
     llm,
     n_samples=5,  # Number of reasoning paths to generate
-    temperature=0.7  # Higher temperature can lead to more diverse answers
+    temperature=0.7,  # Higher temperature can lead to more diverse answers
 )
 
 # Step 4: Define the prompt (with a basic CoT trigger)

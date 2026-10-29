@@ -209,7 +209,7 @@ def test_run_with_empty_answers_and_errors(fake_llm_factory):
         elif call_count == 2:
             return ""
         return "Result=42"
-    
+
     call_count = 0
     llm.generate = mock_gen
     sc = SelfConsistency(llm=llm, n_samples=3)
@@ -232,7 +232,7 @@ async def test_run_async_with_empty_answers_and_errors(fake_llm_factory):
         elif call_count == 2:
             return ""
         return "Result=10"
-    
+
     llm = fake_llm_factory()
     llm.generate_async = mock_gen_async
     sc = SelfConsistency(llm=llm, n_samples=3)
@@ -261,4 +261,3 @@ async def test_run_async_counter_index_error(mocker, fake_llm_factory):
     llm = fake_llm_factory({"generate_async": ["Result=42"]})
     sc = SelfConsistency(llm=llm, n_samples=1)
     assert await sc.run_async("prompt") == ""
-
