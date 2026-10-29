@@ -14,11 +14,11 @@ trim_trailing_whitespace = true
 max_line_length = 100
 
 [*.md]
-max_line_length = 130
+max_line_length = 150
 trim_trailing_whitespace = false
 
 [*.sh]
 indent_size = 2
 
-[*.{yml,yaml}]
+[*.{yml,yaml,json}]
 indent_size = 2

@@ -6,8 +6,8 @@ from typing import Any, AsyncIterator, Iterator, List, Optional, Tuple, Type
 from ollama import AsyncClient, Client
 from pydantic import BaseModel
 
-from .base import BaseLLM
 from ..utils import approx_token_length  # Add import
+from .base import BaseLLM
 
 logger = logging.getLogger(__name__)
 

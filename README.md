@@ -8,7 +8,6 @@
 
 [![Tests](https://img.shields.io/github/actions/workflow/status/habedi/cogitator/tests.yml?label=tests&style=flat&labelColor=333333&logo=github&logoColor=white)](https://github.com/habedi/cogitator/actions/workflows/tests.yml)
 [![Code Coverage](https://img.shields.io/codecov/c/github/habedi/cogitator?style=flat&label=coverage&labelColor=333333&logo=codecov&logoColor=white)](https://codecov.io/gh/habedi/cogitator)
-[![Code Quality](https://img.shields.io/codefactor/grade/github/habedi/cogitator?style=flat&label=code%20quality&labelColor=333333&logo=codefactor&logoColor=white)](https://www.codefactor.io/repository/github/habedi/cogitator)
 [![Python Version](https://img.shields.io/badge/python-%3E=3.10-3776ab?style=flat&labelColor=333333&logo=python&logoColor=white)](https://github.com/habedi/cogitator)
 [![PyPI Version](https://img.shields.io/pypi/v/cogitator.svg?style=flat&label=pypi&labelColor=333333&logo=pypi&logoColor=white&color=3775a9)](https://pypi.org/project/cogitator)
 <br>
@@ -60,12 +59,12 @@ Or, if you want to install from the latest version with examples and benchmarks 
 ```bash
 git clone https://github.com/habedi/cogitator && cd cogitator
 
-# Set up Python environment (use Poetry 2.0+)
-pip install poetry
-poetry install --all-extras
+# Set up the Python environment with uv
+pip install uv
+uv sync --locked
 
 # Run the tests to make sure everything is working (optional)
-poetry run pytest
+uv run pytest
 ```
 
 #### Examples

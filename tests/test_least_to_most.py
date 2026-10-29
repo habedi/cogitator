@@ -269,3 +269,141 @@ async def test_solve_async_calls_generate_json_async(fake_llm_factory):
     assert len(llm.async_calls) == 2
     assert all(c["type"] == "_generate_json_internal_async" for c in llm.async_calls)
     assert all(c["response_model"] == "ExtractedAnswer" for c in llm.async_calls)
+
+
+def test_custom_few_shot_examples(fake_llm_factory):
+    llm = fake_llm_factory()
+    custom_examples = [("Q1", ["sub1"]), ("Q2", ["sub2"])]
+    ltm = LeastToMost(llm, few_shot_examples=custom_examples)
+    assert ltm.examples == custom_examples
+
+
+def test_decompose_json_decode_error(fake_llm_factory):
+    import json
+    from unittest.mock import MagicMock
+    llm = fake_llm_factory()
+    llm.generate_json = MagicMock(side_effect=json.JSONDecodeError("msg", "doc", 0))
+    ltm = LeastToMost(llm, intermediate_output_format="json")
+    with pytest.raises(ValueError, match="Failed to decompose question due to LLM response error"):
+        ltm.decompose("anything")
+
+
+@pytest.mark.asyncio
+async def test_decompose_async_json_decode_error(fake_llm_factory):
+    import json
+    llm = fake_llm_factory()
+    async def mock_fail(*args, **kwargs):
+        raise json.JSONDecodeError("msg", "doc", 0)
+    llm.generate_json_async = mock_fail
+    ltm = LeastToMost(llm, intermediate_output_format="json")
+    with pytest.raises(ValueError, match="Async decomposition failed due to LLM response error"):
+        await ltm.decompose_async("anything async")
+
+
+@pytest.mark.asyncio
+async def test_decompose_async_with_semaphore(fake_llm_factory):
+    import asyncio
+    llm = fake_llm_factory({
+        "json_subquestions": LTMDecomposition(subquestions=["sub1"])
+    })
+    ltm = LeastToMost(llm, intermediate_output_format="json")
+    sem = asyncio.Semaphore(2)
+    subs = await ltm.decompose_async("question", semaphore=sem)
+    assert subs == ["sub1"]
+
+
+@pytest.mark.asyncio
+async def test_solve_async_with_semaphore(fake_llm_factory):
+    import asyncio
+    expected_sub_answer_obj = ExtractedAnswer(final_answer="ans")
+    llm = fake_llm_factory({"json_answer": expected_sub_answer_obj})
+    ltm = LeastToMost(llm, intermediate_output_format="json")
+    sem = asyncio.Semaphore(2)
+    solved = await ltm.solve_async("main q", ["sub1"], semaphore=sem)
+    assert solved == [("sub1", "ans")]
+
+
+@pytest.mark.asyncio
+async def test_solve_async_text_with_semaphore(fake_llm_factory):
+    import asyncio
+    llm = fake_llm_factory({"sub_answer": "ans"})
+    ltm = LeastToMost(llm, intermediate_output_format="text")
+    sem = asyncio.Semaphore(2)
+    solved = await ltm.solve_async("main q", ["sub1"], semaphore=sem)
+    assert solved == [("sub1", "ans")]
+
+
+def test_solve_sync_empty_answer_and_error(fake_llm_factory):
+    from unittest.mock import MagicMock
+    llm = fake_llm_factory({"sub_answer": ""})
+    ltm = LeastToMost(llm, intermediate_output_format="text")
+    solved = ltm.solve("main q", ["sub1"])
+    assert solved == [("sub1", "[No Answer Found]")]
+
+    llm.generate = MagicMock(side_effect=Exception("api failure"))
+    solved = ltm.solve("main q", ["sub1"])
+    assert solved == [("sub1", "[Error]")]
+
+
+@pytest.mark.asyncio
+async def test_solve_async_empty_answer_and_error(fake_llm_factory):
+    llm = fake_llm_factory({"sub_answer": ""})
+    ltm = LeastToMost(llm, intermediate_output_format="text")
+    solved = await ltm.solve_async("main q", ["sub1"])
+    assert solved == [("sub1", "[No Answer Found]")]
+
+    async def mock_fail(*args, **kwargs):
+        raise Exception("async api failure")
+    llm.generate_async = mock_fail
+    solved = await ltm.solve_async("main q", ["sub1"])
+    assert solved == [("sub1", "[Error]")]
+
+
+def test_run_exception_handling(fake_llm_factory):
+    from unittest.mock import MagicMock
+    llm = fake_llm_factory()
+    llm.generate_json = MagicMock(side_effect=Exception("general failure"))
+    ltm = LeastToMost(llm, intermediate_output_format="json")
+    res = ltm.run("question")
+    assert res.startswith("[Error:")
+
+
+@pytest.mark.asyncio
+async def test_run_async_with_semaphore_json_and_text(fake_llm_factory):
+    import asyncio
+    sem = asyncio.Semaphore(2)
+
+    subquestions = ["sub1"]
+    fake_sub_answer_obj = ExtractedAnswer(final_answer="sub_ans")
+    fake_final_answer_obj = ExtractedAnswer(final_answer="final_ans")
+    llm = fake_llm_factory({
+        "json_subquestions": LTMDecomposition(subquestions=subquestions),
+        "responses_map": {
+            "Current Subquestion: sub1": fake_sub_answer_obj,
+            "Original Main Question: question": fake_final_answer_obj
+        }
+    })
+    ltm = LeastToMost(llm, intermediate_output_format="json")
+    out = await ltm.run_async("question", semaphore=sem)
+    assert out == "final_ans"
+
+    llm_text = fake_llm_factory({
+        "json_subquestions": LTMDecomposition(subquestions=["sub1"]),
+        "sub_answer": "sub_ans_text",
+        "final_answer": "final_ans_text"
+    })
+    ltm_text = LeastToMost(llm_text, intermediate_output_format="text")
+    out_text = await ltm_text.run_async("question", semaphore=sem)
+    assert out_text == "final_ans_text"
+
+
+@pytest.mark.asyncio
+async def test_run_async_exception_handling(fake_llm_factory):
+    llm = fake_llm_factory()
+    async def mock_fail(*args, **kwargs):
+        raise Exception("general async failure")
+    llm.generate_json_async = mock_fail
+    ltm = LeastToMost(llm, intermediate_output_format="json")
+    out = await ltm.run_async("question")
+    assert out.startswith("[Error:")
+

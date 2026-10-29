@@ -390,6 +390,15 @@ class TestOpenRouterInternalMethods:
         if openrouter_llm.encoding is not None:
             assert openrouter_llm.encoding.name == "cl100k_base"
 
+    def test_tiktoken_encoding_failure(self, mocker, mock_openrouter_clients):
+        """Test fallback when tiktoken loading fails."""
+        mocker.patch("tiktoken.get_encoding", side_effect=Exception("mock loading error"))
+        from cogitator import OpenRouterLLM
+
+        llm = OpenRouterLLM(api_key="test-key")
+        assert llm.encoding is None
+
+
     def test_no_site_headers_by_default(self, mocker):
         """Test that no headers are added when site info not provided."""
         from cogitator import OpenRouterLLM

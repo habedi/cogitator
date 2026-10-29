@@ -1,7 +1,7 @@
 # Variables
 PYTHON = python
 PIP = pip
-POETRY = poetry
+UV ?= uv
 SHELL = /bin/bash
 BENCH_DIR = benches
 EXAMPLE_DIR = examples
@@ -24,28 +24,28 @@ help: ## Show the help messages for all targets
 setup: ## Install system dependencies
 	sudo apt-get update
 	sudo apt-get install -y python3-pip
-	$(PIP) install poetry
+	$(PIP) install uv
 
 .PHONY: install
 install: ## Install Python dependencies
-	$(POETRY) install --all-extras
+	$(UV) sync --locked
 
 # Testing and linting
 .PHONY: test
 test: ## Run the tests
-	CUDA_VISIBLE_DEVICES="" $(POETRY) run pytest
+	CUDA_VISIBLE_DEVICES="" $(UV) run pytest
 
 .PHONY: lint
 lint: ## Run the linter checks
-	$(POETRY) run ruff check --fix
+	$(UV) run ruff check --fix
 
 .PHONY: format
 format: ## Format the Python files
-	$(POETRY) run ruff format .
+	$(UV) run ruff format .
 
 .PHONY: typecheck
 typecheck: ## Typecheck the Python files
-	$(POETRY) run mypy .
+	$(UV) run mypy .
 
 # Cleaning
 .PHONY: clean
@@ -58,37 +58,36 @@ clean: ## Remove build artifacts, caches, and temporary files
 # Build and publish
 .PHONY: build
 build: ## Build the wheel and source distribution
-	$(POETRY) build
+	$(UV) build
 
 .PHONY: publish
-publish: ## Publish the library to PyPI (requires PYPI_TOKEN to be set)
-	$(POETRY) config pypi-token.pypi $(PYPI_TOKEN)
-	$(POETRY) publish --build
+publish: build ## Publish the library to PyPI (requires PYPI_TOKEN to be set)
+	$(UV) publish --token "$(PYPI_TOKEN)"
 
 .PHONY: example-openai
 example-openai: ## Run the examples using OpenAI (needs OPENAI_API_KEY to be set)
 	@for script in $(EXAMPLE_DIR)/run_*.py; do \
 	   echo "Running $$script --provider openai --openai-key ******** --model-name $(OPENAI_MODE) --use-async"; \
-	   $(POETRY) run python $$script --provider openai --openai-key $(OPENAI_API_KEY) --model-name $(OPENAI_MODE) --use-async; \
+	   $(UV) run python $$script --provider openai --openai-key $(OPENAI_API_KEY) --model-name $(OPENAI_MODE) --use-async; \
 	done
 
 example-ollama: ## Run the examples using Ollama
 	@echo "Running examples with Ollama provider (Model: $(OLLAMA_MODEL))"
 	@for script in $(EXAMPLE_DIR)/run_*.py; do \
 	   echo "Running $$script --provider ollama --model-name $(OLLAMA_MODEL)"; \
-	   $(POETRY) run python $$script --provider ollama --model-name $(OLLAMA_MODEL); \
+	   $(UV) run python $$script --provider ollama --model-name $(OLLAMA_MODEL); \
 	done
 
 .PHONY: docs
 docs: ## Generate the project documentation
-	$(POETRY) run mkdocs build
+	$(UV) run mkdocs build
 
 .PHONY: setup-hooks
 setup-hooks: ## Install Git hooks (pre-commit and pre-push)
-	$(POETRY) run pre-commit install --hook-type pre-commit
-	$(POETRY) run pre-commit install --hook-type pre-push
-	$(POETRY) run pre-commit install
+	$(UV) run pre-commit install --hook-type pre-commit
+	$(UV) run pre-commit install --hook-type pre-push
+	$(UV) run pre-commit install
 
 .PHONY: test-hooks
 test-hooks: ## Run Git hooks manually on all files
-	$(POETRY) run pre-commit run --all-files --show-diff-on-failure
+	$(UV) run pre-commit run --all-files --show-diff-on-failure

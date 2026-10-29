@@ -320,7 +320,7 @@ class TreeOfThoughts:
         if trace:
             # Find the corresponding node in the trace and update it
             for trace_node in trace.nodes:
-                if trace_node.node_id == node.id:
+                if str(trace_node.node_id) == str(node.id):
                     trace_node.score = score
                     if trace_node.metadata:
                         trace_node.metadata["justification"] = justification
@@ -379,7 +379,7 @@ class TreeOfThoughts:
 
         if trace:
             for trace_node in trace.nodes:
-                if trace_node.node_id == node.id:
+                if str(trace_node.node_id) == str(node.id):
                     trace_node.score = score
                     if trace_node.metadata:
                         trace_node.metadata["justification"] = justification
@@ -405,7 +405,7 @@ class TreeOfThoughts:
             cur.value_sum += value
             if trace:
                 for trace_node in trace.nodes:
-                    if trace_node.node_id == cur.id:
+                    if str(trace_node.node_id) == str(cur.id):
                         trace_node.visits = cur.visits
                         trace_node.score = cur.value()  # Update with the new average value
                         break
