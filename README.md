@@ -8,9 +8,9 @@
 
 [![Tests](https://img.shields.io/github/actions/workflow/status/habedi/cogitator/tests.yml?label=tests&style=flat&labelColor=333333&logo=github&logoColor=white)](https://github.com/habedi/cogitator/actions/workflows/tests.yml)
 [![Code Coverage](https://img.shields.io/codecov/c/github/habedi/cogitator?style=flat&label=coverage&labelColor=333333&logo=codecov&logoColor=white)](https://codecov.io/gh/habedi/cogitator)
-[![PyPI Version](https://img.shields.io/pypi/v/cogitator.svg?style=flat&label=pypi&labelColor=333333&logo=pypi&logoColor=white&color=3775a9)](https://pypi.org/project/cogitator)
-[![Docs](https://img.shields.io/badge/docs-read-007ec6?style=flat&labelColor=333333&logo=readthedocs&logoColor=white)](https://habedi.github.io/cogitator)
-[![License](https://img.shields.io/badge/license-MIT-007ec6?style=flat&labelColor=333333&logo=open-source-initiative&logoColor=white)](https://github.com/habedi/cogitator/blob/main/LICENSE)
+[![PyPI Version](https://img.shields.io/pypi/v/cogitator.svg?style=flat&label=pypi&labelColor=333333&logo=pypi&logoColor=white&color=507ec6)](https://pypi.org/project/cogitator)
+[![Docs](https://img.shields.io/badge/docs-read-507ec6?style=flat&labelColor=333333&logo=readthedocs&logoColor=white)](https://habedi.github.io/cogitator)
+[![License](https://img.shields.io/badge/license-MIT-507ec6?style=flat&labelColor=333333&logo=open-source-initiative&logoColor=white)](https://github.com/habedi/cogitator/blob/main/LICENSE)
 [![DOI](https://img.shields.io/badge/doi-10.5281/zenodo.15331821-6f42c1.svg?style=flat&labelColor=333333&logo=zenodo&logoColor=white)](https://doi.org/10.5281/zenodo.15331821)
 
 A Python Toolkit for Chain-of-Thought Prompting
